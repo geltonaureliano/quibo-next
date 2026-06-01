@@ -1,8 +1,8 @@
-import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
+import "dotenv/config";
+import { Pool } from "pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { hashPassword } from "../src/lib/auth";
-import "dotenv/config";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL não definida no .env");
@@ -15,12 +15,12 @@ async function main() {
   console.log("Populando banco de dados com usuário demo...");
 
   const alice = await prisma.user.upsert({
-    where: { email: "alice@quibo.dev" },
+    where: { email: "geltonaureliano@hotmail.com" },
     update: {},
     create: {
-      name: "Alice Ferreira",
-      email: "alice@quibo.dev",
-      password: hashPassword("quibo123"),
+      name: "Gelton Aureliano",
+      email: "geltonaureliano@hotmail.com",
+      password: hashPassword("senha123"),
     },
   });
 
