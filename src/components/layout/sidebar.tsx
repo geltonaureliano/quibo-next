@@ -58,7 +58,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Receitas & Despesas",
     items: [
-      { title: "Receitas", url: "/salaries", icon: TrendingUpIcon },
+      { title: "Receitas", url: "/revenues", icon: TrendingUpIcon },
       { title: "Custo de Vida", url: "/living-costs", icon: ReceiptIcon },
       { title: "Dívidas", url: "/debts", icon: ShieldAlertIcon },
       { title: "Cartões de Crédito", url: "/credit-cards", icon: CreditCardIcon },

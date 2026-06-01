@@ -3,13 +3,14 @@
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { getSession } from "@/lib/session"
-import { SalaryCalculationType, WorkDaysType } from '@/lib/db-types'
+import { SalaryCalculationType, WorkDaysType, IncomeCategoryType } from '@/lib/db-types'
 
 export interface SalaryInput {
   name: string
   description?: string
   accountId: string
   personaId?: string
+  incomeCategory: IncomeCategoryType
   calculationType: SalaryCalculationType
   fixedAmount?: number
   hourlyRate?: number
@@ -49,6 +50,7 @@ export async function createSalary(data: SalaryInput) {
       description: data.description || null,
       accountId: data.accountId,
       personaId: data.personaId || null,
+      incomeCategory: data.incomeCategory,
       calculationType: data.calculationType,
       fixedAmount: data.fixedAmount ?? null,
       hourlyRate: data.hourlyRate ?? null,
@@ -62,7 +64,7 @@ export async function createSalary(data: SalaryInput) {
       isActive: true,
     },
   })
-  revalidatePath("/salaries")
+  revalidatePath("/revenues")
   return { success: true }
 }
 
@@ -75,6 +77,7 @@ export async function updateSalary(id: string, data: Partial<SalaryInput>) {
       description: data.description ?? null,
       accountId: data.accountId,
       personaId: data.personaId ?? null,
+      incomeCategory: data.incomeCategory,
       calculationType: data.calculationType,
       fixedAmount: data.fixedAmount ?? null,
       hourlyRate: data.hourlyRate ?? null,
@@ -87,7 +90,7 @@ export async function updateSalary(id: string, data: Partial<SalaryInput>) {
       paymentDay: data.paymentDay ?? null,
     },
   })
-  revalidatePath("/salaries")
+  revalidatePath("/revenues")
   return { success: true }
 }
 
@@ -97,13 +100,13 @@ export async function toggleSalaryActive(id: string, isActive: boolean) {
     where: { id, userId: session.userId },
     data: { isActive },
   })
-  revalidatePath("/salaries")
+  revalidatePath("/revenues")
   return { success: true }
 }
 
 export async function deleteSalary(id: string) {
   const session = await requireSession()
   await prisma.salary.delete({ where: { id, userId: session.userId } })
-  revalidatePath("/salaries")
+  revalidatePath("/revenues")
   return { success: true }
 }

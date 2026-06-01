@@ -1,0 +1,666 @@
+"use client"
+
+import { useState, useTransition } from "react"
+import { toast } from "sonner"
+import { createSalary, updateSalary, deleteSalary, toggleSalaryActive, type SalaryInput } from "@/actions/salaries"
+import type { SalaryCalculationType, WorkDaysType, IncomeCategoryType } from '@/lib/db-types'
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
+import { EmptyState } from "@/components/shared/empty-state"
+import {
+  BriefcaseIcon,
+  CodeIcon,
+  TrendingUpIcon,
+  DicesIcon,
+  HomeIcon,
+  HeartIcon,
+  BarChart2Icon,
+  GiftIcon,
+  CircleDollarSignIcon,
+  Edit2Icon,
+  Loader2Icon,
+  MoreHorizontalIcon,
+  PlusIcon,
+  Trash2Icon,
+  SearchIcon,
+} from "lucide-react"
+
+// ─── Categoria de Receita ──────────────────────────────────────────────────
+
+const INCOME_CATEGORIES: {
+  value: IncomeCategoryType
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  color: string
+  bg: string
+}[] = [
+  { value: "SALARY",     label: "Salário",       icon: BriefcaseIcon,         color: "text-blue-600",    bg: "bg-blue-500/10"    },
+  { value: "FREELANCE",  label: "Freelance",      icon: CodeIcon,              color: "text-violet-600",  bg: "bg-violet-500/10"  },
+  { value: "INVESTMENT", label: "Investimento",   icon: TrendingUpIcon,        color: "text-emerald-600", bg: "bg-emerald-500/10" },
+  { value: "BETTING",    label: "Apostas",        icon: DicesIcon,             color: "text-orange-600",  bg: "bg-orange-500/10"  },
+  { value: "RENTAL",     label: "Aluguel",        icon: HomeIcon,              color: "text-amber-600",   bg: "bg-amber-500/10"   },
+  { value: "PENSION",    label: "Aposentadoria",  icon: HeartIcon,             color: "text-rose-600",    bg: "bg-rose-500/10"    },
+  { value: "DIVIDEND",   label: "Dividendos",     icon: BarChart2Icon,         color: "text-cyan-600",    bg: "bg-cyan-500/10"    },
+  { value: "BONUS",      label: "Bônus",          icon: GiftIcon,              color: "text-pink-600",    bg: "bg-pink-500/10"    },
+  { value: "OTHER",      label: "Outro",          icon: CircleDollarSignIcon,  color: "text-gray-600",    bg: "bg-gray-500/10"    },
+]
+
+function getCategoryInfo(value: IncomeCategoryType) {
+  return INCOME_CATEGORIES.find((c) => c.value === value) ?? INCOME_CATEGORIES[INCOME_CATEGORIES.length - 1]
+}
+
+// ─── Tipos ────────────────────────────────────────────────────────────────
+
+type SalaryWithRels = {
+  id: string; userId: string; accountId: string; personaId: string | null; name: string; description: string | null
+  incomeCategory: IncomeCategoryType
+  calculationType: SalaryCalculationType; fixedAmount: unknown; hourlyRate: unknown; hoursPerDay: unknown
+  workDays: WorkDaysType | null; includeHolidays: boolean; isRecurring: boolean
+  startDate: Date; endDate: Date | null; paymentDay: number | null; isActive: boolean; createdAt: Date; updatedAt: Date
+  account: { id: string; name: string; color: string } | null
+  persona: { id: string; name: string; color: string } | null
+}
+
+// ─── Utilitários ──────────────────────────────────────────────────────────
+
+function toNum(v: unknown): number {
+  if (typeof v === "number") return v
+  if (v && typeof (v as { toNumber?: () => number }).toNumber === "function") return (v as { toNumber: () => number }).toNumber()
+  return 0
+}
+
+function fmtCurrency(v: unknown) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(toNum(v))
+}
+
+function fmtDate(d: Date) {
+  return new Date(d).toLocaleDateString("pt-BR", { month: "short", year: "numeric" })
+}
+
+// ─── Máscara de moeda BRL ─────────────────────────────────────────────────
+
+function parseCurrencyToFloat(masked: string): number {
+  const digits = masked.replace(/\D/g, "")
+  if (!digits) return 0
+  return parseInt(digits, 10) / 100
+}
+
+function formatCurrencyMask(value: string): string {
+  const digits = value.replace(/\D/g, "")
+  if (!digits) return ""
+  const num = parseInt(digits, 10) / 100
+  return new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num)
+}
+
+function CurrencyInput({
+  value,
+  onChange,
+  placeholder = "0,00",
+  id,
+}: {
+  value: string
+  onChange: (raw: string, float: number) => void
+  placeholder?: string
+  id?: string
+}) {
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const masked = formatCurrencyMask(e.target.value)
+    onChange(masked, parseCurrencyToFloat(masked))
+  }
+  return (
+    <div className="relative">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium pointer-events-none">
+        R$
+      </span>
+      <Input
+        id={id}
+        value={value}
+        onChange={handleChange}
+        placeholder={placeholder}
+        inputMode="numeric"
+        className="pl-9"
+      />
+    </div>
+  )
+}
+
+// ─── Formulário ──────────────────────────────────────────────────────────
+
+interface FormProps {
+  salary?: SalaryWithRels | null
+  accounts: { id: string; name: string }[]
+  onSuccess: () => void
+  onCancel: () => void
+}
+
+function ReceitaForm({ salary, accounts, onSuccess, onCancel }: FormProps) {
+  const [isPending, startTransition] = useTransition()
+  const [name, setName] = useState(salary?.name ?? "")
+  const [description, setDescription] = useState(salary?.description ?? "")
+  const [accountId, setAccountId] = useState(salary?.accountId ?? "")
+  const [personaId] = useState(salary?.personaId ?? "")
+  const [incomeCategory, setIncomeCategory] = useState<IncomeCategoryType>(salary?.incomeCategory ?? "OTHER")
+  const [calcType, setCalcType] = useState<SalaryCalculationType>(salary?.calculationType ?? "FIXED")
+
+  const initFixed = salary?.fixedAmount ? formatCurrencyMask((toNum(salary.fixedAmount) * 100).toFixed(0)) : ""
+  const initHourly = salary?.hourlyRate ? formatCurrencyMask((toNum(salary.hourlyRate) * 100).toFixed(0)) : ""
+
+  const [fixedAmountMasked, setFixedAmountMasked] = useState(initFixed)
+  const [fixedAmountFloat, setFixedAmountFloat] = useState(salary?.fixedAmount ? toNum(salary.fixedAmount) : 0)
+  const [hourlyRateMasked, setHourlyRateMasked] = useState(initHourly)
+  const [hourlyRateFloat, setHourlyRateFloat] = useState(salary?.hourlyRate ? toNum(salary.hourlyRate) : 0)
+  const [hoursPerDay, setHoursPerDay] = useState(salary?.hoursPerDay ? toNum(salary.hoursPerDay).toString() : "8")
+  const [workDays, setWorkDays] = useState<WorkDaysType>(salary?.workDays ?? "WEEKDAYS")
+  const [includeHolidays, setIncludeHolidays] = useState(salary?.includeHolidays ?? false)
+  const [isRecurring, setIsRecurring] = useState(salary?.isRecurring ?? true)
+  const [startDate, setStartDate] = useState(salary?.startDate ? new Date(salary.startDate).toISOString().slice(0, 10) : "")
+  const [endDate, setEndDate] = useState(salary?.endDate ? new Date(salary.endDate).toISOString().slice(0, 10) : "")
+  const [paymentDay, setPaymentDay] = useState(salary?.paymentDay?.toString() ?? "")
+  const [error, setError] = useState("")
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return setError("Nome é obrigatório")
+    if (!accountId) return setError("Conta é obrigatória")
+    if (!startDate) return setError("Data de início é obrigatória")
+    if (calcType === "FIXED" && !fixedAmountFloat) return setError("Valor mensal é obrigatório")
+    if (calcType === "HOURLY" && !hourlyRateFloat) return setError("Valor por hora é obrigatório")
+
+    const input: SalaryInput = {
+      name: name.trim(),
+      description: description || undefined,
+      accountId,
+      personaId: personaId || undefined,
+      incomeCategory,
+      calculationType: calcType,
+      fixedAmount: calcType === "FIXED" ? fixedAmountFloat : undefined,
+      hourlyRate: calcType === "HOURLY" ? hourlyRateFloat : undefined,
+      hoursPerDay: calcType === "HOURLY" ? parseFloat(hoursPerDay) : undefined,
+      workDays: calcType === "HOURLY" ? workDays : undefined,
+      includeHolidays: calcType === "HOURLY" ? includeHolidays : false,
+      isRecurring,
+      startDate,
+      endDate: endDate || undefined,
+      paymentDay: paymentDay ? parseInt(paymentDay) : undefined,
+    }
+
+    setError("")
+    startTransition(async () => {
+      try {
+        if (salary) {
+          await updateSalary(salary.id, input)
+          toast.success("Receita atualizada!")
+        } else {
+          await createSalary(input)
+          toast.success("Receita criada!")
+        }
+        onSuccess()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Erro inesperado")
+      }
+    })
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* Layout horizontal: categorias à esquerda | form à direita */}
+      <div className="flex min-h-[440px]">
+
+        {/* Coluna esquerda — categorias */}
+        <div className="w-44 shrink-0 flex flex-col gap-0.5 py-1 pr-5">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-2">
+            Categoria
+          </p>
+          {INCOME_CATEGORIES.map((cat) => {
+            const Icon = cat.icon
+            const selected = incomeCategory === cat.value
+            return (
+              <button
+                key={cat.value}
+                type="button"
+                onClick={() => setIncomeCategory(cat.value)}
+                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-all cursor-pointer text-left w-full ${
+                  selected
+                    ? `${cat.bg} ${cat.color}`
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="truncate">{cat.label}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Divisor vertical */}
+        <div className="w-px bg-border shrink-0" />
+
+        {/* Coluna direita — campos */}
+        <div className="flex-1 pl-5 py-1 space-y-4 overflow-y-auto">
+          {error && (
+            <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>
+          )}
+
+          {/* Nome */}
+          <div className="space-y-1.5">
+            <Label htmlFor="name">Nome *</Label>
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ex: Salário CLT, Freelance design..."
+            />
+          </div>
+
+          {/* Descrição */}
+          <div className="space-y-1.5">
+            <Label htmlFor="description">Descrição</Label>
+            <Textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              placeholder="Detalhes opcionais..."
+              className="resize-none"
+            />
+          </div>
+
+          {/* Conta */}
+          <div className="space-y-1.5">
+            <Label>Conta *</Label>
+            <Select value={accountId} onValueChange={setAccountId}>
+              <SelectTrigger className="w-full cursor-pointer">
+                <SelectValue placeholder="Selecione a conta" />
+              </SelectTrigger>
+              <SelectContent>
+                {accounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id} className="cursor-pointer">{a.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Tipo de cálculo */}
+          <div className="space-y-2">
+            <Label>Tipo de cálculo</Label>
+            <div className="flex gap-2">
+              {(["FIXED", "HOURLY"] as SalaryCalculationType[]).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setCalcType(t)}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-all cursor-pointer ${
+                    calcType === t
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {t === "FIXED" ? "Valor Fixo" : "Por Hora"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Valores */}
+          {calcType === "FIXED" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="fixedAmount">Valor mensal *</Label>
+              <CurrencyInput
+                id="fixedAmount"
+                value={fixedAmountMasked}
+                onChange={(masked, float) => { setFixedAmountMasked(masked); setFixedAmountFloat(float) }}
+                placeholder="0,00"
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="hourlyRate">Valor por hora *</Label>
+                <CurrencyInput
+                  id="hourlyRate"
+                  value={hourlyRateMasked}
+                  onChange={(masked, float) => { setHourlyRateMasked(masked); setHourlyRateFloat(float) }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="hoursPerDay">Horas/dia</Label>
+                <Input
+                  id="hoursPerDay"
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max="24"
+                  value={hoursPerDay}
+                  onChange={(e) => setHoursPerDay(e.target.value)}
+                />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label>Dias trabalhados</Label>
+                <Select value={workDays} onValueChange={(v) => setWorkDays(v as WorkDaysType)}>
+                  <SelectTrigger className="w-full cursor-pointer"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="WEEKDAYS" className="cursor-pointer">Dias úteis</SelectItem>
+                    <SelectItem value="ALL_DAYS" className="cursor-pointer">Todos os dias</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div
+                className="col-span-2 flex items-center justify-between rounded-xl border border-border px-3 py-2.5 cursor-pointer"
+                onClick={() => setIncludeHolidays(!includeHolidays)}
+              >
+                <Label className="cursor-pointer text-sm">Incluir feriados nacionais</Label>
+                <Switch checked={includeHolidays} onCheckedChange={setIncludeHolidays} />
+              </div>
+            </div>
+          )}
+
+          {/* Datas + pagamento */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="startDate">Início *</Label>
+              <Input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="cursor-pointer" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="endDate">Fim (opcional)</Label>
+              <Input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="cursor-pointer" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="paymentDay">Dia do pagamento</Label>
+              <Input
+                id="paymentDay"
+                type="number"
+                min="1"
+                max="31"
+                value={paymentDay}
+                onChange={(e) => setPaymentDay(e.target.value)}
+                placeholder="1–31"
+              />
+            </div>
+            <div
+              className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5 self-end cursor-pointer"
+              onClick={() => setIsRecurring(!isRecurring)}
+            >
+              <Label className="cursor-pointer text-sm">Recorrente</Label>
+              <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer com divisor */}
+      <div className="border-t border-border pt-4 mt-4">
+        <DialogFooter className="gap-2">
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isPending} className="cursor-pointer">
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={isPending} className="cursor-pointer">
+            {isPending && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
+            {salary ? "Salvar alterações" : "Criar receita"}
+          </Button>
+        </DialogFooter>
+      </div>
+    </form>
+  )
+}
+
+// ─── Tabela principal ─────────────────────────────────────────────────────
+
+interface Props {
+  salaries: SalaryWithRels[]
+  accounts: { id: string; name: string }[]
+}
+
+export function ReceitasTable({ salaries, accounts }: Props) {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editing, setEditing] = useState<SalaryWithRels | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [filter, setFilter] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState<IncomeCategoryType | "ALL">("ALL")
+
+  const filtered = salaries.filter((s) => {
+    const matchName = s.name.toLowerCase().includes(filter.toLowerCase())
+    const matchCat = categoryFilter === "ALL" || s.incomeCategory === categoryFilter
+    return matchName && matchCat
+  })
+
+  function openCreate() { setEditing(null); setDialogOpen(true) }
+  function openEdit(s: SalaryWithRels) { setEditing(s); setDialogOpen(true) }
+
+  async function handleDelete() {
+    if (!deleteId) return
+    await deleteSalary(deleteId)
+    toast.success("Receita excluída!")
+    setDeleteId(null)
+  }
+
+  async function handleToggle(id: string, current: boolean) {
+    await toggleSalaryActive(id, !current)
+    toast.success(!current ? "Receita ativada" : "Receita desativada")
+  }
+
+  const categoryCounts = INCOME_CATEGORIES.map((cat) => ({
+    ...cat,
+    count: salaries.filter((s) => s.incomeCategory === cat.value).length,
+  })).filter((c) => c.count > 0)
+
+  return (
+    <>
+      <div className="px-4 lg:px-6 pb-8 space-y-5">
+        {/* Filtros */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-1 max-w-sm">
+            <div className="relative flex-1">
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Buscar receita..."
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+          </div>
+          <Button size="sm" onClick={openCreate} className="cursor-pointer shrink-0">
+            <PlusIcon className="h-4 w-4 mr-1.5" />
+            Nova receita
+          </Button>
+        </div>
+
+        {/* Filtro por categoria */}
+        {categoryCounts.length > 1 && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setCategoryFilter("ALL")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer ${
+                categoryFilter === "ALL"
+                  ? "bg-foreground text-background border-foreground"
+                  : "border-border hover:bg-muted text-muted-foreground"
+              }`}
+            >
+              Todas
+              <span className="text-[10px] opacity-70">{salaries.length}</span>
+            </button>
+            {categoryCounts.map((cat) => {
+              const Icon = cat.icon
+              const selected = categoryFilter === cat.value
+              return (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => setCategoryFilter(cat.value)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer ${
+                    selected
+                      ? `${cat.bg} ${cat.color} border-current/30`
+                      : "border-border hover:bg-muted text-muted-foreground"
+                  }`}
+                >
+                  <Icon className="h-3 w-3" />
+                  {cat.label}
+                  <span className="text-[10px] opacity-70">{cat.count}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Lista */}
+        {filtered.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border">
+            <EmptyState
+              icon={TrendingUpIcon}
+              title="Nenhuma receita"
+              description={filter || categoryFilter !== "ALL" ? "Nenhum resultado para os filtros aplicados" : "Cadastre fontes de renda como salários, freelances e investimentos"}
+              action={
+                !filter && categoryFilter === "ALL" ? (
+                  <Button size="sm" onClick={openCreate} className="cursor-pointer">
+                    <PlusIcon className="h-4 w-4 mr-1.5" />Nova receita
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-border/60 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/60 bg-muted/30">
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide">Receita</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide hidden sm:table-cell">Categoria</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide hidden sm:table-cell">Tipo</th>
+                  <th className="text-right font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide">Valor</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide hidden md:table-cell">Conta</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide hidden lg:table-cell">Período</th>
+                  <th className="text-center font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide hidden md:table-cell">Ativa</th>
+                  <th className="px-4 py-3 w-10" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                {filtered.map((s) => {
+                  const catInfo = getCategoryInfo(s.incomeCategory)
+                  const Icon = catInfo.icon
+                  return (
+                    <tr key={s.id} className="hover:bg-muted/20 transition-colors group">
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${catInfo.bg}`}>
+                            <Icon className={`h-4 w-4 ${catInfo.color}`} />
+                          </div>
+                          <div>
+                            <div className="font-medium leading-tight">{s.name}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 hidden sm:table-cell">
+                        <Badge
+                          variant="secondary"
+                          className={`${catInfo.bg} ${catInfo.color} border-0 font-normal`}
+                        >
+                          {catInfo.label}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3.5 hidden sm:table-cell">
+                        <Badge
+                          variant="secondary"
+                          className={
+                            s.calculationType === "FIXED"
+                              ? "bg-blue-500/10 text-blue-600 border-0 font-normal"
+                              : "bg-violet-500/10 text-violet-600 border-0 font-normal"
+                          }
+                        >
+                          {s.calculationType === "FIXED" ? "Fixo" : "Por hora"}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono font-semibold text-emerald-600 tabular-nums">
+                        {s.calculationType === "FIXED"
+                          ? fmtCurrency(s.fixedAmount)
+                          : `${fmtCurrency(s.hourlyRate)}/h`}
+                      </td>
+                      <td className="px-4 py-3.5 hidden md:table-cell text-muted-foreground text-xs">
+                        {s.account?.name ?? "—"}
+                      </td>
+                      <td className="px-4 py-3.5 hidden lg:table-cell text-xs text-muted-foreground tabular-nums">
+                        {fmtDate(s.startDate)}{s.endDate ? ` → ${fmtDate(s.endDate)}` : " → ∞"}
+                      </td>
+                      <td className="px-4 py-3.5 hidden md:table-cell">
+                        <div className="flex justify-center">
+                          <Switch
+                            checked={s.isActive}
+                            onCheckedChange={() => handleToggle(s.id, s.isActive)}
+                            className="cursor-pointer"
+                          />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            >
+                              <MoreHorizontalIcon className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEdit(s)} className="cursor-pointer">
+                              <Edit2Icon className="h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setDeleteId(s.id)}
+                              className="cursor-pointer"
+                            >
+                              <Trash2Icon className="h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modal criar/editar */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editing ? "Editar receita" : "Nova receita"}</DialogTitle>
+            <DialogDescription>
+              {editing ? "Atualize os dados da sua fonte de renda" : "Cadastre uma nova fonte de renda"}
+            </DialogDescription>
+          </DialogHeader>
+          <ReceitaForm
+            salary={editing}
+            accounts={accounts}
+            onSuccess={() => setDialogOpen(false)}
+            onCancel={() => setDialogOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm delete */}
+      <ConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(open) => !open && setDeleteId(null)}
+        title="Excluir receita?"
+        description="Esta ação não pode ser desfeita. A receita será removida permanentemente."
+        onConfirm={handleDelete}
+      />
+    </>
+  )
+}

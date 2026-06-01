@@ -18,6 +18,18 @@ enum SalaryCalculationType {
   HOURLY
 }
 
+enum IncomeCategoryType {
+  SALARY
+  FREELANCE
+  INVESTMENT
+  BETTING
+  RENTAL
+  PENSION
+  DIVIDEND
+  BONUS
+  OTHER
+}
+
 enum WorkDaysType {
   ALL_DAYS
   WEEKDAYS
@@ -201,7 +213,8 @@ model Salary {
   personaId       String?
   name            String
   description     String?
-  calculationType SalaryCalculationType
+  calculationType  SalaryCalculationType
+  incomeCategory   IncomeCategoryType    @default(OTHER)
   /// Valor mensal fixo — usado quando calculationType = FIXED
   fixedAmount     Decimal?
   /// Valor por hora — usado quando calculationType = HOURLY
