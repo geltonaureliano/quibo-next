@@ -1,151 +1,136 @@
-"use client";
+"use client"
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  Users,
-  FileText,
-  Database,
-  Settings,
-  ChevronRight,
-  Zap,
-} from "lucide-react";
+import * as React from "react"
 
+import { NavMain } from "@/components/nav-main"
+import { NavProjects } from "@/components/nav-projects"
+import { NavSecondary } from "@/components/nav-secondary"
+import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
-} from "@/components/ui/sidebar";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+} from "@/components/ui/sidebar"
+import {
+  ZapIcon,
+  LayoutDashboardIcon,
+  UsersIcon,
+  FileTextIcon,
+  Settings2Icon,
+  CircleHelpIcon,
+  DatabaseIcon,
+  FileChartColumnIcon,
+  BarChart3Icon,
+  ShieldIcon,
+} from "lucide-react"
 
-const navMain = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Usuários", href: "/users", icon: Users },
-  { title: "Posts", href: "/posts", icon: FileText },
-];
+const data = {
+  user: {
+    name: "Admin",
+    email: "admin@quibo.dev",
+    avatar: "",
+  },
+  navMain: [
+    {
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: <LayoutDashboardIcon />,
+      isActive: true,
+      items: [
+        { title: "Visão Geral", url: "/dashboard" },
+        { title: "Analytics", url: "#" },
+        { title: "Relatórios", url: "#" },
+      ],
+    },
+    {
+      title: "Usuários",
+      url: "/users",
+      icon: <UsersIcon />,
+      items: [
+        { title: "Listar", url: "/users" },
+        { title: "Novo Usuário", url: "/users" },
+        { title: "Permissões", url: "#" },
+      ],
+    },
+    {
+      title: "Posts",
+      url: "/posts",
+      icon: <FileTextIcon />,
+      items: [
+        { title: "Todos os Posts", url: "/posts" },
+        { title: "Publicados", url: "/posts" },
+        { title: "Rascunhos", url: "/posts" },
+      ],
+    },
+    {
+      title: "Configurações",
+      url: "#",
+      icon: <Settings2Icon />,
+      items: [
+        { title: "Geral", url: "#" },
+        { title: "Banco de Dados", url: "#" },
+        { title: "Segurança", url: "#" },
+      ],
+    },
+  ],
+  navSecondary: [
+    {
+      title: "Suporte",
+      url: "#",
+      icon: <CircleHelpIcon />,
+    },
+  ],
+  projects: [
+    {
+      name: "API REST",
+      url: "/api/users",
+      icon: <DatabaseIcon />,
+    },
+    {
+      name: "Métricas",
+      url: "#",
+      icon: <BarChart3Icon />,
+    },
+    {
+      name: "Segurança",
+      url: "#",
+      icon: <ShieldIcon />,
+    },
+  ],
+}
 
-const navSystem = [
-  { title: "Configurações", href: "/settings", icon: Settings },
-];
-
-export function AppSidebar() {
-  const pathname = usePathname();
-
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
-    <Sidebar collapsible="icon">
-      {/* Logo */}
-      <SidebarHeader className="px-4 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary">
-            <Zap className="h-4 w-4 text-sidebar-primary-foreground" />
-          </div>
-          <div className="flex flex-col leading-none group-data-[collapsible=icon]:hidden">
-            <span className="font-bold text-sidebar-foreground text-base tracking-tight">
-              quibo
-            </span>
-            <span className="text-xs text-sidebar-foreground/50">
-              Next.js + Prisma
-            </span>
-          </div>
-        </div>
+    <Sidebar variant="inset" {...props}>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild>
+              <a href="/dashboard">
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                  <ZapIcon className="size-4" />
+                </div>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">quibo</span>
+                  <span className="truncate text-xs opacity-60">Next.js + Prisma</span>
+                </div>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
-
-      <SidebarSeparator className="bg-sidebar-border" />
-
       <SidebarContent>
-        {/* Main nav */}
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase text-[10px] tracking-widest">
-            Aplicação
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            {navMain.map((item) => {
-              const isActive =
-                pathname === item.href ||
-                (item.href !== "/" && pathname.startsWith(item.href));
-              return (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive}
-                    tooltip={item.title}
-                  >
-                    <Link href={item.href}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                      {isActive && (
-                        <ChevronRight className="ml-auto h-3 w-3 opacity-60" />
-                      )}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </SidebarGroup>
-
-        {/* API */}
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase text-[10px] tracking-widest">
-            Sistema
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="API REST">
-                <a href="/api/users" target="_blank" rel="noopener noreferrer">
-                  <Database className="h-4 w-4" />
-                  <span>API REST</span>
-                  <Badge
-                    variant="secondary"
-                    className="ml-auto text-[10px] px-1.5 py-0 h-4 bg-sidebar-accent text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden"
-                  >
-                    6
-                  </Badge>
-                </a>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {navSystem.map((item) => (
-              <SidebarMenuItem key={item.href}>
-                <SidebarMenuButton asChild tooltip={item.title}>
-                  <Link href={item.href}>
-                    <item.icon className="h-4 w-4" />
-                    <span>{item.title}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
+        <NavMain items={data.navMain} />
+        <NavProjects projects={data.projects} />
+        <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
-
-      {/* Footer */}
-      <SidebarFooter className="px-3 py-4">
-        <SidebarSeparator className="bg-sidebar-border mb-3" />
-        <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
-          <Avatar className="h-8 w-8 shrink-0">
-            <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs font-bold">
-              QA
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col leading-none group-data-[collapsible=icon]:hidden min-w-0">
-            <span className="text-sm font-medium text-sidebar-foreground truncate">
-              Admin
-            </span>
-            <span className="text-xs text-sidebar-foreground/50 truncate">
-              admin@quibo.dev
-            </span>
-          </div>
-        </div>
+      <SidebarFooter>
+        <NavUser user={data.user} />
       </SidebarFooter>
     </Sidebar>
-  );
+  )
 }
