@@ -9,22 +9,456 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  posts     Post[]
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum SalaryCalculationType {
+  FIXED
+  HOURLY
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
+enum WorkDaysType {
+  ALL_DAYS
+  WEEKDAYS
+  CUSTOM
+}
+
+enum LivingCostSourceType {
+  ACCOUNT
+  CREDIT_CARD
+}
+
+enum DebtType {
+  INSTALLMENT
+  LOAN
+  PENDING
+  FLEXIBLE
+}
+
+enum DebtStatus {
+  ACTIVE
+  PAID_OFF
+  OVERDUE
+}
+
+enum DebtInstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum TransactionStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  PARTIAL
+}
+
+enum CardBrand {
+  VISA
+  MASTERCARD
+  ELO
+  AMEX
+  HIPERCARD
+  DINERS
+  OTHER
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  INVESTMENT
+  CASH
+  OTHER
+}
+
+// ─────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  authorId  String
+
+  accounts              Account[]
+  personas              Persona[]
+  categories            Category[]
+  creditCards           CreditCard[]
+  salaries              Salary[]
+  livingCosts           LivingCost[]
+  debts                 Debt[]
+  transactions          Transaction[]
+  monthlyPaymentRecords MonthlyPaymentRecord[]
+}
+
+// ─────────────────────────────────────────────
+// ENTIDADES DE SUPORTE
+// ─────────────────────────────────────────────
+
+/// Conta bancária, carteira digital ou dinheiro em espécie.
+/// O campo balance é atualizado automaticamente por transações PAID.
+model Account {
+  id             String      @id @default(uuid())
+  userId         String
+  name           String
+  type           AccountType
+  bank           String?
+  agency         String?
+  accountNumber  String?
+  balance        Decimal     @default(0)
+  initialBalance Decimal     @default(0)
+  color          String      @default("#3b82f6")
+  icon           String      @default("tabler:wallet")
+  isActive       Boolean     @default(true)
+  isPrimary      Boolean     @default(false)
+  archived       Boolean     @default(false)
+  personaId      String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  persona      Persona?      @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
+  salaries     Salary[]
+  livingCosts  LivingCost[]
+  debts        Debt[]
+
+  @@index([userId])
+}
+
+/// Contexto financeiro — separa finanças pessoais, profissionais, projetos etc.
+model Persona {
+  id          String  @id @default(uuid())
+  userId      String
+  name        String
+  description String?
+  color       String  @default("#3b82f6")
+  icon        String  @default("tabler:user")
+  archived    Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts     Account[]
+  creditCards  CreditCard[]
+  transactions Transaction[]
+  salaries     Salary[]
+  livingCosts  LivingCost[]
+  debts        Debt[]
+
+  @@index([userId])
+}
+
+/// Categoria hierárquica para classificar transações, custos e dívidas.
+model Category {
+  id       String          @id @default(uuid())
+  userId   String
+  name     String
+  type     TransactionType
+  color    String          @default("#6b7280")
+  icon     String          @default("tabler:tag")
+  archived Boolean         @default(false)
+  parentId String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent       Category?     @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Category[]    @relation("CategoryHierarchy")
+  transactions Transaction[]
+  livingCosts  LivingCost[]
+  debts        Debt[]
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// DOMÍNIO: RECEITAS / SALÁRIOS
+// ─────────────────────────────────────────────
+
+/// Fonte de renda recorrente ou pontual (CLT, freelance, aluguel recebido, etc.).
+model Salary {
+  id              String                @id @default(uuid())
+  userId          String
+  accountId       String
+  personaId       String?
+  name            String
+  description     String?
+  calculationType SalaryCalculationType
+  /// Valor mensal fixo — usado quando calculationType = FIXED
+  fixedAmount     Decimal?
+  /// Valor por hora — usado quando calculationType = HOURLY
+  hourlyRate      Decimal?
+  /// Horas trabalhadas por dia — usado quando calculationType = HOURLY
+  hoursPerDay     Decimal?
+  workDays        WorkDaysType?
+  includeHolidays Boolean               @default(false)
+  isRecurring     Boolean               @default(true)
+  startDate       DateTime
+  endDate         DateTime?
+  /// Dia do mês em que o pagamento ocorre (1–31)
+  paymentDay      Int?
+  isActive        Boolean               @default(true)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  persona      Persona?      @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
+
+  @@index([userId])
+  @@index([accountId])
+}
+
+// ─────────────────────────────────────────────
+// DOMÍNIO: CUSTO DE VIDA
+// ─────────────────────────────────────────────
+
+/// Despesa fixa recorrente (aluguel, internet, plano de saúde, streaming etc.).
+/// Funciona como template — não cria movimentações diretamente.
+model LivingCost {
+  id           String               @id @default(uuid())
+  userId       String
+  name         String
+  description  String?
+  amount       Decimal
+  sourceType   LivingCostSourceType
+  /// Obrigatório quando sourceType = ACCOUNT
+  accountId    String?
+  /// Obrigatório quando sourceType = CREDIT_CARD
+  creditCardId String?
+  categoryId   String?
+  personaId    String?
+  /// Dia do mês em que a despesa vence (1–31)
+  dayOfMonth   Int
+  startDate    DateTime?
+  endDate      DateTime?
+  isActive     Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account    Account?    @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  creditCard CreditCard? @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  category   Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  persona    Persona?    @relation(fields: [personaId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// DOMÍNIO: DÍVIDAS
+// ─────────────────────────────────────────────
+
+/// Compromisso financeiro com terceiros: financiamento, empréstimo, dívida pontual ou flexível.
+model Debt {
+  id                    String     @id @default(uuid())
+  userId                String
+  name                  String
+  description           String?
+  type                  DebtType
+  totalAmount           Decimal
+  /// Valor de cada parcela — usado quando type = INSTALLMENT
+  installmentValue      Decimal?
+  paidAmount            Decimal    @default(0)
+  accountId             String
+  categoryId            String?
+  personaId             String?
+  startDate             DateTime
+  /// Obrigatório para LOAN e PENDING
+  dueDate               DateTime?
+  /// Número total de parcelas — usado quando type = INSTALLMENT
+  totalInstallments     Int?
+  remainingInstallments Int?
+  /// Dia do mês de vencimento das parcelas (1–31)
+  installmentDay        Int?
+  status                DebtStatus @default(ACTIVE)
+  /// Taxa de juros por mês (%) para cálculo de multa por atraso
+  interestRate          Decimal?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category     Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  persona      Persona?          @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  installments DebtInstallment[]
+
+  @@index([userId])
+  @@index([accountId])
+}
+
+/// Parcela individual de uma dívida do tipo INSTALLMENT.
+model DebtInstallment {
+  id       String                @id @default(uuid())
+  debtId   String
+  /// Número sequencial da parcela (1, 2, 3...)
+  number   Int
+  amount   Decimal
+  dueDate  DateTime
+  paidDate DateTime?
+  status   DebtInstallmentStatus @default(PENDING)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  debt Debt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  @@index([debtId])
+}
+
+// ─────────────────────────────────────────────
+// DOMÍNIO: CARTÕES DE CRÉDITO E FATURAS
+// ─────────────────────────────────────────────
+
+/// Cartão de crédito do usuário com ciclo de fechamento e vencimento.
+model CreditCard {
+  id         String    @id @default(uuid())
+  userId     String
+  name       String
+  brand      CardBrand
+  limit      Decimal
+  /// Dia de fechamento da fatura (1–31)
+  closingDay Int
+  /// Dia de vencimento do pagamento (1–31)
+  dueDay     Int
+  color      String    @default("#6366f1")
+  isActive   Boolean   @default(true)
+  personaId  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  persona      Persona?      @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
+  invoices     Invoice[]
+  livingCosts  LivingCost[]
+
+  @@index([userId])
+}
+
+/// Fatura mensal agregada de um cartão de crédito.
+/// Uma por cartão por mês/ano — unicidade garantida por constraint.
+model Invoice {
+  id           String        @id @default(uuid())
+  creditCardId String
+  userId       String
+  /// Mês da fatura (1–12)
+  month        Int
+  year         Int
+  totalAmount  Decimal
+  paidAmount   Decimal       @default(0)
+  status       InvoiceStatus @default(PENDING)
+  dueDate      DateTime
+  paidAt       DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  creditCard CreditCard @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+
+  @@unique([creditCardId, month, year])
+  @@index([creditCardId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// DOMÍNIO: TRANSAÇÕES
+// ─────────────────────────────────────────────
+
+/// Hub central de movimentações financeiras.
+/// Pode representar qualquer entrada, saída ou transferência — livre, recorrente ou parcelada.
+model Transaction {
+  id          String            @id @default(uuid())
+  userId      String
+  description String
+  amount      Decimal
+  type        TransactionType
+  status      TransactionStatus @default(PENDING)
+  date        DateTime
+  paidAt      DateTime?
+
+  accountId    String?
+  creditCardId String?
+  categoryId   String?
+  /// Vincula ao Salary que originou este recebimento
+  salaryId     String?
+  personaId    String?
+
+  // Recorrência — instâncias vinculadas pelo mesmo recurrenceGroupId
+  isRecurring         Boolean   @default(false)
+  recurrenceRule      String?
+  recurrenceGroupId   String?
+  recurrenceEndDate   DateTime?
+  parentTransactionId String?
+
+  // Parcelamento informativo (distinto de DebtInstallment)
+  isInstallment     Boolean @default(false)
+  installmentNumber Int?
+  totalInstallments Int?
+
+  notes       String?
+  tags        String[]
+  attachments String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account    Account?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  creditCard CreditCard?   @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  category   Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  salary     Salary?       @relation(fields: [salaryId], references: [id], onDelete: SetNull)
+  persona    Persona?      @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  parent     Transaction?  @relation("TransactionParent", fields: [parentTransactionId], references: [id], onDelete: SetNull)
+  children   Transaction[] @relation("TransactionParent")
+
+  @@index([userId])
+  @@index([userId, date])
+  @@index([recurrenceGroupId])
+  @@index([creditCardId])
+  @@index([salaryId])
+}
+
+// ─────────────────────────────────────────────
+// DOMÍNIO: REGISTRO MENSAL DE PAGAMENTOS
+// ─────────────────────────────────────────────
+
+/// Toggle de pago/pendente para itens recorrentes por mês,
+/// sem exigir criação de Transaction formal.
+/// Referência polimórfica: itemType + itemId apontam para Salary,
+/// LivingCost, CreditCard ou Debt.
+model MonthlyPaymentRecord {
+  id       String    @id @default(uuid())
+  userId   String
+  /// "SALARY" | "LIVING_COST" | "CREDIT_CARD" | "DEBT"
+  itemType String
+  itemId   String
+  /// Mês (1–12)
+  month    Int
+  year     Int
+  isPaid   Boolean   @default(false)
+  paidAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([itemType, itemId, month, year])
+  @@index([userId, month, year])
 }

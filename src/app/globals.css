@@ -114,13 +114,13 @@ body {
   --chart-3: oklch(0.60 0.15 140);
   --chart-4: oklch(0.62 0.18 50);
   --chart-5: oklch(0.55 0.22 30);
-  --sidebar: oklch(0.13 0.01 264);
+  --sidebar: #27282a;
   --sidebar-foreground: oklch(0.92 0 0);
   --sidebar-primary: oklch(0.62 0.22 264);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.20 0.02 264);
+  --sidebar-accent: oklch(1 0 0 / 7%);
   --sidebar-accent-foreground: oklch(0.92 0 0);
-  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-border: oklch(1 0 0 / 6%);
   --sidebar-ring: oklch(0.55 0.22 264);
 }
 
