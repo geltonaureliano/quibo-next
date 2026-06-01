@@ -1,137 +1,155 @@
-"use client";
+"use client"
 
-import * as React from "react";
-
-import { NavMain } from "@/components/layout/nav-main";
-import { NavProjects } from "@/components/layout/nav-projects";
-import { NavSecondary } from "@/components/layout/nav-secondary";
-import { NavUser } from "@/components/layout/nav-user";
+import * as React from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+} from "@/components/ui/sidebar"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { NavUser } from "@/components/layout/nav-user"
 import {
   BarChart3Icon,
-  CircleHelpIcon,
-  DatabaseIcon,
-  FileTextIcon,
+  ChevronRightIcon,
+  CreditCardIcon,
   LayoutDashboardIcon,
+  PiggyBankIcon,
+  ReceiptIcon,
+  RepeatIcon,
   Settings2Icon,
-  ShieldIcon,
+  ShieldAlertIcon,
+  TagIcon,
+  TrendingUpIcon,
   UsersIcon,
-  ZapIcon,
-} from "lucide-react";
+  WalletIcon,
+} from "lucide-react"
 
-const data = {
-  user: {
-    name: "Admin",
-    email: "admin@quibo.dev",
-    avatar: "",
+interface NavItem {
+  title: string
+  url: string
+  icon: React.ComponentType<{ className?: string }>
+  disabled?: boolean
+}
+
+interface NavGroup {
+  label: string
+  items: NavItem[]
+}
+
+const navGroups: NavGroup[] = [
+  {
+    label: "Principal",
+    items: [
+      { title: "Dashboard", url: "/dashboard", icon: LayoutDashboardIcon },
+      { title: "Transações", url: "/transactions", icon: RepeatIcon },
+    ],
   },
-  navMain: [
-    {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: <LayoutDashboardIcon />,
-      isActive: true,
-      items: [
-        { title: "Visão Geral", url: "/dashboard" },
-        { title: "Analytics", url: "#" },
-        { title: "Relatórios", url: "#" },
-      ],
-    },
-    {
-      title: "Usuários",
-      url: "/users",
-      icon: <UsersIcon />,
-      items: [
-        { title: "Listar", url: "/users" },
-        { title: "Novo Usuário", url: "/users" },
-        { title: "Permissões", url: "#" },
-      ],
-    },
-    {
-      title: "Posts",
-      url: "/posts",
-      icon: <FileTextIcon />,
-      items: [
-        { title: "Todos os Posts", url: "/posts" },
-        { title: "Publicados", url: "/posts" },
-        { title: "Rascunhos", url: "/posts" },
-      ],
-    },
-    {
-      title: "Configurações",
-      url: "#",
-      icon: <Settings2Icon />,
-      items: [
-        { title: "Geral", url: "#" },
-        { title: "Banco de Dados", url: "#" },
-        { title: "Segurança", url: "#" },
-      ],
-    },
-  ],
-  navSecondary: [
-    {
-      title: "Suporte",
-      url: "#",
-      icon: <CircleHelpIcon />,
-    },
-  ],
-  projects: [
-    {
-      name: "API REST",
-      url: "/api/users",
-      icon: <DatabaseIcon />,
-    },
-    {
-      name: "Métricas",
-      url: "#",
-      icon: <BarChart3Icon />,
-    },
-    {
-      name: "Segurança",
-      url: "#",
-      icon: <ShieldIcon />,
-    },
-  ],
-};
+  {
+    label: "Receitas & Despesas",
+    items: [
+      { title: "Receitas", url: "/salaries", icon: TrendingUpIcon },
+      { title: "Custo de Vida", url: "/living-costs", icon: ReceiptIcon },
+      { title: "Dívidas", url: "/debts", icon: ShieldAlertIcon },
+      { title: "Cartões de Crédito", url: "/credit-cards", icon: CreditCardIcon },
+    ],
+  },
+  {
+    label: "Configurações",
+    items: [
+      { title: "Contas", url: "/accounts", icon: WalletIcon },
+      { title: "Categorias", url: "/categories", icon: TagIcon },
+      { title: "Personas", url: "/personas", icon: UsersIcon },
+    ],
+  },
+  {
+    label: "Análises",
+    items: [
+      { title: "Relatórios", url: "/reports", icon: BarChart3Icon, disabled: true },
+      { title: "Planejamento", url: "/planning", icon: PiggyBankIcon, disabled: true },
+      { title: "Configurações", url: "/settings", icon: Settings2Icon, disabled: true },
+    ],
+  },
+]
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
+  user?: { name: string; email: string; avatar: string }
+}
+
+export function AppSidebar({ user, ...props }: AppSidebarProps) {
+  const pathname = usePathname()
+
   return (
     <Sidebar variant="inset" {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <a href="/dashboard">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <ZapIcon className="size-4" />
+              <Link href="/dashboard">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
+                  <span className="font-bold text-sm">Q</span>
                 </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">quibo</span>
-                  <span className="truncate text-xs opacity-60">
-                    Next.js + Prisma
-                  </span>
+                <div className="flex flex-col leading-none">
+                  <span className="font-semibold text-sm">Quibo</span>
+                  <span className="text-[10px] text-sidebar-foreground/50">Gestão financeira</span>
                 </div>
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
+
       <SidebarContent>
-        <NavMain items={data.navMain} />
-        <NavProjects projects={data.projects} />
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
+        {navGroups.map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarMenu>
+              {group.items.map((item) => {
+                const isActive =
+                  pathname === item.url || pathname.startsWith(item.url + "/")
+                const Icon = item.icon
+
+                return (
+                  <SidebarMenuItem key={item.url}>
+                    <SidebarMenuButton
+                      asChild={!item.disabled}
+                      isActive={isActive}
+                      tooltip={item.title}
+                      className={item.disabled ? "opacity-40 cursor-not-allowed" : ""}
+                    >
+                      {item.disabled ? (
+                        <span className="flex items-center gap-2">
+                          <Icon className="h-4 w-4" />
+                          <span>{item.title}</span>
+                        </span>
+                      ) : (
+                        <Link href={item.url}>
+                          <Icon className="h-4 w-4" />
+                          <span>{item.title}</span>
+                        </Link>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
+
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={user ?? { name: "", email: "", avatar: "" }} />
       </SidebarFooter>
     </Sidebar>
-  );
+  )
 }

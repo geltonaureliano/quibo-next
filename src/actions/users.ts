@@ -2,22 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { hashPassword } from "@/lib/auth";
 
 export async function getUsers() {
   return prisma.user.findMany({
     orderBy: { createdAt: "desc" },
-    include: { _count: { select: { posts: true } } },
+    select: { id: true, name: true, email: true, createdAt: true, updatedAt: true },
   });
 }
 
 export async function getUserById(id: string) {
-  return prisma.user.findUnique({
-    where: { id },
-    include: {
-      posts: { orderBy: { createdAt: "desc" } },
-      _count: { select: { posts: true } },
-    },
-  });
+  return prisma.user.findUnique({ where: { id } });
 }
 
 export async function createUser(formData: FormData) {
@@ -26,7 +21,7 @@ export async function createUser(formData: FormData) {
 
   if (!name || !email) throw new Error("Nome e email são obrigatórios");
 
-  await prisma.user.create({ data: { name, email } });
+  await prisma.user.create({ data: { name, email, password: hashPassword("quibo123") } });
   revalidatePath("/users");
 }
 

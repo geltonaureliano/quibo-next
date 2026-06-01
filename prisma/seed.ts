@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { hashPassword } from "../src/lib/auth";
 import "dotenv/config";
 
 const connectionString = process.env.DATABASE_URL;
@@ -11,56 +12,28 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log("Populando banco de dados...");
+  console.log("Populando banco de dados com usuário demo...");
 
   const alice = await prisma.user.upsert({
     where: { email: "alice@quibo.dev" },
     update: {},
-    create: { name: "Alice Ferreira", email: "alice@quibo.dev" },
+    create: {
+      name: "Alice Ferreira",
+      email: "alice@quibo.dev",
+      password: hashPassword("quibo123"),
+    },
   });
 
-  const bob = await prisma.user.upsert({
-    where: { email: "bob@quibo.dev" },
-    update: {},
-    create: { name: "Bob Santos", email: "bob@quibo.dev" },
-  });
-
-  const postsData = [
-    {
-      title: "Introdução ao Next.js 16",
-      content: "O Next.js 16 traz melhorias significativas no App Router e Server Actions...",
-      published: true,
-      authorId: alice.id,
-    },
-    {
-      title: "Prisma 7: o que mudou",
-      content: "A versão 7 do Prisma introduz um novo sistema de configuração com prisma.config.ts e driver adapters obrigatórios.",
-      published: true,
-      authorId: alice.id,
-    },
-    {
-      title: "Rascunho: Deploy no Vercel",
-      content: null,
-      published: false,
-      authorId: bob.id,
-    },
-  ];
-
-  for (const post of postsData) {
-    const existing = await prisma.post.findFirst({ where: { title: post.title } });
-    if (!existing) {
-      await prisma.post.create({ data: post });
-    }
-  }
-
-  const userCount = await prisma.user.count();
-  const postCount = await prisma.post.count();
-  console.log(`Seed concluído! ${userCount} usuários, ${postCount} posts.`);
+  console.log(`Usuário criado: ${alice.name} (${alice.email})`);
+  console.log("Seed concluído!");
 }
 
 main()
-  .catch(console.error)
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
   .finally(async () => {
     await prisma.$disconnect();
-    await pool.end();
+    pool.end();
   });
