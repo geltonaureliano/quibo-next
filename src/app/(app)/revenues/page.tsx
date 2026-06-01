@@ -5,9 +5,16 @@ import { SiteHeader } from "@/components/layout/header"
 import { PageHeader } from "@/components/shared/page-header"
 import { StatCard } from "@/components/shared/stat-card"
 import { ReceitasTable } from "./_components/receitas-table"
-import { TrendingUpIcon, CheckCircle2Icon, XCircleIcon, CalendarIcon } from "lucide-react"
+import { RevenuesMonthBar } from "./_components/revenues-month-bar"
+import { sumMonthlyRevenues } from "@/lib/revenue-calculations"
+import { formatMonthYear, parseMonthYearSearchParams, toDateMonthIndex } from "@/lib/month-params"
+import { TrendingUpIcon, CheckCircle2Icon, ClockIcon } from "lucide-react"
 
 export const dynamic = "force-dynamic"
+
+type PageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}
 
 function toNum(v: unknown): number {
   if (typeof v === "number") return v
@@ -19,9 +26,13 @@ function fmtCurrency(v: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v)
 }
 
-export default async function ReceitasPage() {
+export default async function ReceitasPage({ searchParams }: PageProps) {
   const session = await getSession()
   if (!session) redirect("/login")
+
+  const sp = await searchParams
+  const { month, year } = parseMonthYearSearchParams(sp)
+  const monthIndex = toDateMonthIndex(month)
 
   const [salaries, accounts] = await Promise.all([
     prisma.salary.findMany({
@@ -39,11 +50,22 @@ export default async function ReceitasPage() {
     }),
   ])
 
-  const active = salaries.filter((s) => s.isActive)
-  const fixedTotal = active
-    .filter((s) => s.calculationType === "FIXED")
-    .reduce((sum, s) => sum + toNum(s.fixedAmount), 0)
-  const hourlyCount = active.filter((s) => s.calculationType === "HOURLY").length
+  // Serializa Decimal → number para evitar erro de serialização no Client Component
+  const serializedSalaries = salaries.map((s) => ({
+    ...s,
+    fixedAmount: toNum(s.fixedAmount),
+    hourlyRate: toNum(s.hourlyRate),
+    hoursPerDay: toNum(s.hoursPerDay),
+  }))
+
+  const { fixedTotal, hourlyTotal, total } = sumMonthlyRevenues(
+    serializedSalaries,
+    year,
+    monthIndex
+  )
+
+  const active = serializedSalaries.filter((s) => s.isActive)
+  const monthLabel = formatMonthYear(month, year)
 
   return (
     <>
@@ -52,16 +74,44 @@ export default async function ReceitasPage() {
         <PageHeader
           title="Receitas"
           description="Gerencie suas fontes de renda: salários, freelances, investimentos e mais"
-          stats={
-            <>
-              <StatCard title="Receita fixa/mês" value={fmtCurrency(fixedTotal)} icon={TrendingUpIcon} variant="success" />
-              <StatCard title="Ativas" value={active.length} icon={CheckCircle2Icon} variant="success" />
-              <StatCard title="Inativas" value={salaries.length - active.length} icon={XCircleIcon} variant="warning" />
-              <StatCard title="Por hora" value={hourlyCount} icon={CalendarIcon} variant="default" />
-            </>
-          }
+          action={<RevenuesMonthBar />}
         />
-        <ReceitasTable salaries={salaries} accounts={accounts} />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 px-4 pb-4 lg:px-6">
+          <StatCard
+            title="Receita total/mês"
+            value={fmtCurrency(total)}
+            description={`${fmtCurrency(fixedTotal)} fixo · ${fmtCurrency(hourlyTotal)} por hora`}
+            icon={TrendingUpIcon}
+            variant="success"
+          />
+          <StatCard
+            title="Valor fixo"
+            value={fmtCurrency(fixedTotal)}
+            description={monthLabel}
+            icon={CheckCircle2Icon}
+            variant="default"
+          />
+          <StatCard
+            title="Por hora (mês)"
+            value={fmtCurrency(hourlyTotal)}
+            description="Estimativa com dias úteis"
+            icon={ClockIcon}
+            variant="default"
+          />
+          <StatCard
+            title="Ativas"
+            value={active.length}
+            description={`${serializedSalaries.length - active.length} inativa(s)`}
+            icon={CheckCircle2Icon}
+            variant="default"
+          />
+        </div>
+        <ReceitasTable
+          salaries={serializedSalaries}
+          accounts={accounts}
+          month={monthIndex}
+          year={year}
+        />
       </div>
     </>
   )

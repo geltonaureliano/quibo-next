@@ -4,6 +4,10 @@ import { useState, useTransition } from "react"
 import { toast } from "sonner"
 import { createSalary, updateSalary, deleteSalary, toggleSalaryActive, type SalaryInput } from "@/actions/salaries"
 import type { SalaryCalculationType, WorkDaysType, IncomeCategoryType } from '@/lib/db-types'
+import {
+  getMonthlyRevenueAmount,
+  isRevenueActiveInMonth,
+} from "@/lib/revenue-calculations"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,7 +16,6 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
 import {
@@ -25,9 +28,7 @@ import {
   BarChart2Icon,
   GiftIcon,
   CircleDollarSignIcon,
-  Edit2Icon,
   Loader2Icon,
-  MoreHorizontalIcon,
   PlusIcon,
   Trash2Icon,
   SearchIcon,
@@ -62,7 +63,7 @@ function getCategoryInfo(value: IncomeCategoryType) {
 type SalaryWithRels = {
   id: string; userId: string; accountId: string; personaId: string | null; name: string; description: string | null
   incomeCategory: IncomeCategoryType
-  calculationType: SalaryCalculationType; fixedAmount: unknown; hourlyRate: unknown; hoursPerDay: unknown
+  calculationType: SalaryCalculationType; fixedAmount: number; hourlyRate: number; hoursPerDay: number
   workDays: WorkDaysType | null; includeHolidays: boolean; isRecurring: boolean
   startDate: Date; endDate: Date | null; paymentDay: number | null; isActive: boolean; createdAt: Date; updatedAt: Date
   account: { id: string; name: string; color: string } | null
@@ -77,8 +78,8 @@ function toNum(v: unknown): number {
   return 0
 }
 
-function fmtCurrency(v: unknown) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(toNum(v))
+function fmtCurrency(v: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v)
 }
 
 function fmtDate(d: Date) {
@@ -139,9 +140,10 @@ interface FormProps {
   accounts: { id: string; name: string }[]
   onSuccess: () => void
   onCancel: () => void
+  onRequestDelete?: () => void
 }
 
-function ReceitaForm({ salary, accounts, onSuccess, onCancel }: FormProps) {
+function ReceitaForm({ salary, accounts, onSuccess, onCancel, onRequestDelete }: FormProps) {
   const [isPending, startTransition] = useTransition()
   const [name, setName] = useState(salary?.name ?? "")
   const [description, setDescription] = useState(salary?.description ?? "")
@@ -150,18 +152,19 @@ function ReceitaForm({ salary, accounts, onSuccess, onCancel }: FormProps) {
   const [incomeCategory, setIncomeCategory] = useState<IncomeCategoryType>(salary?.incomeCategory ?? "OTHER")
   const [calcType, setCalcType] = useState<SalaryCalculationType>(salary?.calculationType ?? "FIXED")
 
-  const initFixed = salary?.fixedAmount ? formatCurrencyMask((toNum(salary.fixedAmount) * 100).toFixed(0)) : ""
-  const initHourly = salary?.hourlyRate ? formatCurrencyMask((toNum(salary.hourlyRate) * 100).toFixed(0)) : ""
+  const initFixed = salary?.fixedAmount ? formatCurrencyMask(Math.round(salary.fixedAmount * 100).toFixed(0)) : ""
+  const initHourly = salary?.hourlyRate ? formatCurrencyMask(Math.round(salary.hourlyRate * 100).toFixed(0)) : ""
 
   const [fixedAmountMasked, setFixedAmountMasked] = useState(initFixed)
-  const [fixedAmountFloat, setFixedAmountFloat] = useState(salary?.fixedAmount ? toNum(salary.fixedAmount) : 0)
+  const [fixedAmountFloat, setFixedAmountFloat] = useState(salary?.fixedAmount ?? 0)
   const [hourlyRateMasked, setHourlyRateMasked] = useState(initHourly)
-  const [hourlyRateFloat, setHourlyRateFloat] = useState(salary?.hourlyRate ? toNum(salary.hourlyRate) : 0)
-  const [hoursPerDay, setHoursPerDay] = useState(salary?.hoursPerDay ? toNum(salary.hoursPerDay).toString() : "8")
+  const [hourlyRateFloat, setHourlyRateFloat] = useState(salary?.hourlyRate ?? 0)
+  const [hoursPerDay, setHoursPerDay] = useState(salary?.hoursPerDay ? salary.hoursPerDay.toString() : "8")
   const [workDays, setWorkDays] = useState<WorkDaysType>(salary?.workDays ?? "WEEKDAYS")
   const [includeHolidays, setIncludeHolidays] = useState(salary?.includeHolidays ?? false)
   const [isRecurring, setIsRecurring] = useState(salary?.isRecurring ?? true)
-  const [startDate, setStartDate] = useState(salary?.startDate ? new Date(salary.startDate).toISOString().slice(0, 10) : "")
+  const today = new Date().toISOString().slice(0, 10)
+  const [startDate, setStartDate] = useState(salary?.startDate ? new Date(salary.startDate).toISOString().slice(0, 10) : today)
   const [endDate, setEndDate] = useState(salary?.endDate ? new Date(salary.endDate).toISOString().slice(0, 10) : "")
   const [paymentDay, setPaymentDay] = useState(salary?.paymentDay?.toString() ?? "")
   const [error, setError] = useState("")
@@ -211,33 +214,52 @@ function ReceitaForm({ salary, accounts, onSuccess, onCancel }: FormProps) {
 
   return (
     <form onSubmit={handleSubmit}>
+      {/* Erro sempre visível acima do layout */}
+      {error && (
+        <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg mb-4">{error}</p>
+      )}
+
       {/* Layout horizontal: categorias à esquerda | form à direita */}
       <div className="flex min-h-[440px]">
 
-        {/* Coluna esquerda — categorias */}
-        <div className="w-44 shrink-0 flex flex-col gap-0.5 py-1 pr-5">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-2">
+        {/* Coluna esquerda — categorias + excluir fixo embaixo */}
+        <div className="w-44 shrink-0 flex flex-col min-h-[440px] py-1 pr-5">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-2 shrink-0">
             Categoria
           </p>
-          {INCOME_CATEGORIES.map((cat) => {
-            const Icon = cat.icon
-            const selected = incomeCategory === cat.value
-            return (
-              <button
-                key={cat.value}
-                type="button"
-                onClick={() => setIncomeCategory(cat.value)}
-                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-all cursor-pointer text-left w-full ${
-                  selected
-                    ? `${cat.bg} ${cat.color}`
-                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                }`}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="truncate">{cat.label}</span>
-              </button>
-            )
-          })}
+          <div className="flex-1 flex flex-col gap-0.5 overflow-y-auto min-h-0">
+            {INCOME_CATEGORIES.map((cat) => {
+              const Icon = cat.icon
+              const selected = incomeCategory === cat.value
+              return (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => setIncomeCategory(cat.value)}
+                  className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-all cursor-pointer text-left w-full shrink-0 ${
+                    selected
+                      ? `${cat.bg} ${cat.color}`
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{cat.label}</span>
+                </button>
+              )
+            })}
+          </div>
+          {salary && onRequestDelete && (
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-3 w-full shrink-0 cursor-pointer text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+              onClick={onRequestDelete}
+              disabled={isPending}
+            >
+              <Trash2Icon className="h-4 w-4 mr-2" />
+              Excluir
+            </Button>
+          )}
         </div>
 
         {/* Divisor vertical */}
@@ -245,10 +267,6 @@ function ReceitaForm({ salary, accounts, onSuccess, onCancel }: FormProps) {
 
         {/* Coluna direita — campos */}
         <div className="flex-1 pl-5 py-1 space-y-4 overflow-y-auto">
-          {error && (
-            <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>
-          )}
-
           {/* Nome */}
           <div className="space-y-1.5">
             <Label htmlFor="name">Nome *</Label>
@@ -342,22 +360,21 @@ function ReceitaForm({ salary, accounts, onSuccess, onCancel }: FormProps) {
                   onChange={(e) => setHoursPerDay(e.target.value)}
                 />
               </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label>Dias trabalhados</Label>
-                <Select value={workDays} onValueChange={(v) => setWorkDays(v as WorkDaysType)}>
-                  <SelectTrigger className="w-full cursor-pointer"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="WEEKDAYS" className="cursor-pointer">Dias úteis</SelectItem>
-                    <SelectItem value="ALL_DAYS" className="cursor-pointer">Todos os dias</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div
-                className="col-span-2 flex items-center justify-between rounded-xl border border-border px-3 py-2.5 cursor-pointer"
-                onClick={() => setIncludeHolidays(!includeHolidays)}
-              >
-                <Label className="cursor-pointer text-sm">Incluir feriados nacionais</Label>
-                <Switch checked={includeHolidays} onCheckedChange={setIncludeHolidays} />
+              <div className="col-span-2 flex items-end gap-3">
+                <div className="flex-1 space-y-1.5">
+                  <Label>Dias trabalhados</Label>
+                  <Select value={workDays} onValueChange={(v) => setWorkDays(v as WorkDaysType)}>
+                    <SelectTrigger className="w-full cursor-pointer"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="WEEKDAYS" className="cursor-pointer">Dias úteis</SelectItem>
+                      <SelectItem value="ALL_DAYS" className="cursor-pointer">Todos os dias</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <label className="flex items-center gap-2 rounded-xl border border-border px-3 h-9 cursor-pointer shrink-0">
+                  <span className="text-sm font-medium whitespace-nowrap">Feriados</span>
+                  <Switch checked={includeHolidays} onCheckedChange={setIncludeHolidays} />
+                </label>
               </div>
             </div>
           )}
@@ -384,13 +401,10 @@ function ReceitaForm({ salary, accounts, onSuccess, onCancel }: FormProps) {
                 placeholder="1–31"
               />
             </div>
-            <div
-              className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5 self-end cursor-pointer"
-              onClick={() => setIsRecurring(!isRecurring)}
-            >
-              <Label className="cursor-pointer text-sm">Recorrente</Label>
+            <label className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5 self-end cursor-pointer">
+              <span className="text-sm font-medium">Recorrente</span>
               <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
-            </div>
+            </label>
           </div>
         </div>
       </div>
@@ -416,9 +430,11 @@ function ReceitaForm({ salary, accounts, onSuccess, onCancel }: FormProps) {
 interface Props {
   salaries: SalaryWithRels[]
   accounts: { id: string; name: string }[]
+  month: number
+  year: number
 }
 
-export function ReceitasTable({ salaries, accounts }: Props) {
+export function ReceitasTable({ salaries, accounts, month, year }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<SalaryWithRels | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -428,7 +444,8 @@ export function ReceitasTable({ salaries, accounts }: Props) {
   const filtered = salaries.filter((s) => {
     const matchName = s.name.toLowerCase().includes(filter.toLowerCase())
     const matchCat = categoryFilter === "ALL" || s.incomeCategory === categoryFilter
-    return matchName && matchCat
+    const matchMonth = isRevenueActiveInMonth(s, year, month)
+    return matchName && matchCat && matchMonth
   })
 
   function openCreate() { setEditing(null); setDialogOpen(true) }
@@ -439,6 +456,8 @@ export function ReceitasTable({ salaries, accounts }: Props) {
     await deleteSalary(deleteId)
     toast.success("Receita excluída!")
     setDeleteId(null)
+    setDialogOpen(false)
+    setEditing(null)
   }
 
   async function handleToggle(id: string, current: boolean) {
@@ -446,9 +465,11 @@ export function ReceitasTable({ salaries, accounts }: Props) {
     toast.success(!current ? "Receita ativada" : "Receita desativada")
   }
 
+  const salariesInMonth = salaries.filter((s) => isRevenueActiveInMonth(s, year, month))
+
   const categoryCounts = INCOME_CATEGORIES.map((cat) => ({
     ...cat,
-    count: salaries.filter((s) => s.incomeCategory === cat.value).length,
+    count: salariesInMonth.filter((s) => s.incomeCategory === cat.value).length,
   })).filter((c) => c.count > 0)
 
   return (
@@ -486,7 +507,7 @@ export function ReceitasTable({ salaries, accounts }: Props) {
               }`}
             >
               Todas
-              <span className="text-[10px] opacity-70">{salaries.length}</span>
+              <span className="text-[10px] opacity-70">{salariesInMonth.length}</span>
             </button>
             {categoryCounts.map((cat) => {
               const Icon = cat.icon
@@ -516,8 +537,12 @@ export function ReceitasTable({ salaries, accounts }: Props) {
           <div className="rounded-2xl border border-dashed border-border">
             <EmptyState
               icon={TrendingUpIcon}
-              title="Nenhuma receita"
-              description={filter || categoryFilter !== "ALL" ? "Nenhum resultado para os filtros aplicados" : "Cadastre fontes de renda como salários, freelances e investimentos"}
+              title="Nenhuma receita neste mês"
+              description={
+                filter || categoryFilter !== "ALL"
+                  ? "Nenhum resultado para os filtros aplicados"
+                  : "Não há receitas vigentes neste período. Tente outro mês ou cadastre uma nova fonte de renda."
+              }
               action={
                 !filter && categoryFilter === "ALL" ? (
                   <Button size="sm" onClick={openCreate} className="cursor-pointer">
@@ -535,19 +560,23 @@ export function ReceitasTable({ salaries, accounts }: Props) {
                   <th className="text-left font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide">Receita</th>
                   <th className="text-left font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide hidden sm:table-cell">Categoria</th>
                   <th className="text-left font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide hidden sm:table-cell">Tipo</th>
-                  <th className="text-right font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide">Valor</th>
+                  <th className="text-right font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide">Valor no mês</th>
                   <th className="text-left font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide hidden md:table-cell">Conta</th>
                   <th className="text-left font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide hidden lg:table-cell">Período</th>
                   <th className="text-center font-medium text-muted-foreground px-4 py-3 text-xs uppercase tracking-wide hidden md:table-cell">Ativa</th>
-                  <th className="px-4 py-3 w-10" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
                 {filtered.map((s) => {
                   const catInfo = getCategoryInfo(s.incomeCategory)
                   const Icon = catInfo.icon
+                  const monthlyAmount = getMonthlyRevenueAmount(s, year, month)
                   return (
-                    <tr key={s.id} className="hover:bg-muted/20 transition-colors group">
+                    <tr
+                      key={s.id}
+                      onClick={() => openEdit(s)}
+                      className="hover:bg-muted/50 transition-colors cursor-pointer"
+                    >
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${catInfo.bg}`}>
@@ -578,18 +607,30 @@ export function ReceitasTable({ salaries, accounts }: Props) {
                           {s.calculationType === "FIXED" ? "Fixo" : "Por hora"}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3.5 text-right font-mono font-semibold text-emerald-600 tabular-nums">
-                        {s.calculationType === "FIXED"
-                          ? fmtCurrency(s.fixedAmount)
-                          : `${fmtCurrency(s.hourlyRate)}/h`}
+                      <td className="px-4 py-3.5 text-right tabular-nums">
+                        <div className="font-mono font-semibold text-emerald-600">
+                          {fmtCurrency(monthlyAmount)}
+                        </div>
+                        {s.calculationType === "HOURLY" && (
+                          <div className="text-[10px] text-muted-foreground mt-0.5">
+                            {fmtCurrency(s.hourlyRate)}/h
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3.5 hidden md:table-cell text-muted-foreground text-xs">
                         {s.account?.name ?? "—"}
                       </td>
-                      <td className="px-4 py-3.5 hidden lg:table-cell text-xs text-muted-foreground tabular-nums">
-                        {fmtDate(s.startDate)}{s.endDate ? ` → ${fmtDate(s.endDate)}` : " → ∞"}
+                      <td className="px-4 py-3.5 hidden lg:table-cell text-xs text-muted-foreground">
+                        {s.endDate ? (
+                          <span className="tabular-nums">{fmtDate(s.startDate)} → {fmtDate(s.endDate)}</span>
+                        ) : (
+                          <span>Tempo indeterminado</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3.5 hidden md:table-cell">
+                      <td
+                        className="px-4 py-3.5 hidden md:table-cell"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <div className="flex justify-center">
                           <Switch
                             checked={s.isActive}
@@ -597,34 +638,6 @@ export function ReceitasTable({ salaries, accounts }: Props) {
                             className="cursor-pointer"
                           />
                         </div>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                            >
-                              <MoreHorizontalIcon className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEdit(s)} className="cursor-pointer">
-                              <Edit2Icon className="h-4 w-4" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => setDeleteId(s.id)}
-                              className="cursor-pointer"
-                            >
-                              <Trash2Icon className="h-4 w-4" />
-                              Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
                       </td>
                     </tr>
                   )
@@ -649,6 +662,9 @@ export function ReceitasTable({ salaries, accounts }: Props) {
             accounts={accounts}
             onSuccess={() => setDialogOpen(false)}
             onCancel={() => setDialogOpen(false)}
+            onRequestDelete={
+              editing ? () => setDeleteId(editing.id) : undefined
+            }
           />
         </DialogContent>
       </Dialog>
