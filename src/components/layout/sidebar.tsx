@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import * as React from "react";
 
-import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-projects"
-import { NavSecondary } from "@/components/nav-secondary"
-import { NavUser } from "@/components/nav-user"
+import { NavMain } from "@/components/layout/nav-main";
+import { NavProjects } from "@/components/layout/nav-projects";
+import { NavSecondary } from "@/components/layout/nav-secondary";
+import { NavUser } from "@/components/layout/nav-user";
 import {
   Sidebar,
   SidebarContent,
@@ -14,19 +14,18 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 import {
-  ZapIcon,
-  LayoutDashboardIcon,
-  UsersIcon,
-  FileTextIcon,
-  Settings2Icon,
+  BarChart3Icon,
   CircleHelpIcon,
   DatabaseIcon,
-  FileChartColumnIcon,
-  BarChart3Icon,
+  FileTextIcon,
+  LayoutDashboardIcon,
+  Settings2Icon,
   ShieldIcon,
-} from "lucide-react"
+  UsersIcon,
+  ZapIcon,
+} from "lucide-react";
 
 const data = {
   user: {
@@ -101,7 +100,7 @@ const data = {
       icon: <ShieldIcon />,
     },
   ],
-}
+};
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
@@ -116,7 +115,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">quibo</span>
-                  <span className="truncate text-xs opacity-60">Next.js + Prisma</span>
+                  <span className="truncate text-xs opacity-60">
+                    Next.js + Prisma
+                  </span>
                 </div>
               </a>
             </SidebarMenuButton>
@@ -132,5 +133,5 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavUser user={data.user} />
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }
