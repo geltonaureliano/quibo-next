@@ -1,29 +1,20 @@
 import { redirect } from "next/navigation"
 import { getSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
+import { toNum, fmtCurrency } from "@/lib/currency"
 import { SiteHeader } from "@/components/layout/header"
 import { PageHeader } from "@/components/shared/page-header"
 import { StatCard } from "@/components/shared/stat-card"
 import { ReceitasTable } from "./_components/receitas-table"
 import { RevenuesMonthBar } from "./_components/revenues-month-bar"
-import { sumMonthlyRevenues } from "@/lib/revenue-calculations"
-import { formatMonthYear, parseMonthYearSearchParams, toDateMonthIndex } from "@/lib/month-params"
-import { TrendingUpIcon, CheckCircle2Icon, ClockIcon } from "lucide-react"
+import { computeMonthlyRevenueStats, fmtMonthName, prevMonthYear } from "@/lib/revenue-calculations"
+import { parseMonthYearSearchParams, toDateMonthIndex } from "@/lib/month-params"
+import { TrendingUpIcon, CalendarIcon, CalendarDaysIcon, ClockIcon } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>
-}
-
-function toNum(v: unknown): number {
-  if (typeof v === "number") return v
-  if (v && typeof (v as { toNumber?: () => number }).toNumber === "function") return (v as { toNumber: () => number }).toNumber()
-  return 0
-}
-
-function fmtCurrency(v: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v)
 }
 
 export default async function ReceitasPage({ searchParams }: PageProps) {
@@ -39,7 +30,6 @@ export default async function ReceitasPage({ searchParams }: PageProps) {
       where: { userId: session.userId },
       include: {
         account: { select: { id: true, name: true, color: true } },
-        persona: { select: { id: true, name: true, color: true } },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -58,14 +48,9 @@ export default async function ReceitasPage({ searchParams }: PageProps) {
     hoursPerDay: toNum(s.hoursPerDay),
   }))
 
-  const { fixedTotal, hourlyTotal, total } = sumMonthlyRevenues(
-    serializedSalaries,
-    year,
-    monthIndex
-  )
-
-  const active = serializedSalaries.filter((s) => s.isActive)
-  const monthLabel = formatMonthYear(month, year)
+  const stats = computeMonthlyRevenueStats(serializedSalaries, year, monthIndex)
+  const { year: prevY, month: prevM } = prevMonthYear(year, monthIndex)
+  const prevMonthLabel = fmtMonthName(prevY, prevM).split(" ")[0]
 
   return (
     <>
@@ -78,31 +63,31 @@ export default async function ReceitasPage({ searchParams }: PageProps) {
         />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 px-4 pb-4 lg:px-6">
           <StatCard
-            title="Receita total/mês"
-            value={fmtCurrency(total)}
-            description={`${fmtCurrency(fixedTotal)} fixo · ${fmtCurrency(hourlyTotal)} por hora`}
+            title="Valor do mês"
+            value={fmtCurrency(stats.total)}
+            description={`${fmtCurrency(stats.fixedTotal)} fixo · ${fmtCurrency(stats.hourlyTotal)} hora (ref. ${prevMonthLabel})`}
             icon={TrendingUpIcon}
             variant="success"
           />
           <StatCard
-            title="Valor fixo"
-            value={fmtCurrency(fixedTotal)}
-            description={monthLabel}
-            icon={CheckCircle2Icon}
+            title="Média por semana"
+            value={fmtCurrency(stats.avgPerWeek)}
+            description="Receitas do mês ÷ semanas (hora = ref. mês anterior)"
+            icon={CalendarIcon}
             variant="default"
           />
           <StatCard
-            title="Por hora (mês)"
-            value={fmtCurrency(hourlyTotal)}
-            description="Estimativa com dias úteis"
+            title="Média por dia"
+            value={fmtCurrency(stats.avgPerDay)}
+            description={`Total ÷ ${stats.workDaysInMonth} dias úteis (sem feriados e fins de semana)`}
+            icon={CalendarDaysIcon}
+            variant="default"
+          />
+          <StatCard
+            title="Média por hora"
+            value={stats.avgPerHour != null ? fmtCurrency(stats.avgPerHour) : "—"}
+            description={`${fmtCurrency(stats.total)} ÷ (${stats.workDaysInMonth} dias úteis × 8 h)`}
             icon={ClockIcon}
-            variant="default"
-          />
-          <StatCard
-            title="Ativas"
-            value={active.length}
-            description={`${serializedSalaries.length - active.length} inativa(s)`}
-            icon={CheckCircle2Icon}
             variant="default"
           />
         </div>

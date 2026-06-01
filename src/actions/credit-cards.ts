@@ -12,7 +12,6 @@ export interface CreditCardInput {
   closingDay: number
   dueDay: number
   color?: string
-  personaId?: string
 }
 
 export interface InvoiceInput {
@@ -34,7 +33,6 @@ export async function getCreditCards() {
   return prisma.creditCard.findMany({
     where: { userId: session.userId },
     include: {
-      persona: { select: { id: true, name: true, color: true } },
       invoices: { orderBy: [{ year: "desc" }, { month: "desc" }], take: 3 },
       _count: { select: { transactions: true } },
     },
@@ -53,7 +51,6 @@ export async function createCreditCard(data: CreditCardInput) {
       closingDay: data.closingDay,
       dueDay: data.dueDay,
       color: data.color || "#6366f1",
-      personaId: data.personaId || null,
     },
   })
   revalidatePath("/credit-cards")
@@ -71,7 +68,6 @@ export async function updateCreditCard(id: string, data: CreditCardInput) {
       closingDay: data.closingDay,
       dueDay: data.dueDay,
       color: data.color,
-      personaId: data.personaId ?? null,
     },
   })
   revalidatePath("/credit-cards")

@@ -9,7 +9,6 @@ export interface SalaryInput {
   name: string
   description?: string
   accountId: string
-  personaId?: string
   incomeCategory: IncomeCategoryType
   calculationType: SalaryCalculationType
   fixedAmount?: number
@@ -35,7 +34,6 @@ export async function getSalaries() {
     where: { userId: session.userId },
     include: {
       account: { select: { id: true, name: true, color: true } },
-      persona: { select: { id: true, name: true, color: true } },
     },
     orderBy: { createdAt: "desc" },
   })
@@ -49,7 +47,6 @@ export async function createSalary(data: SalaryInput) {
       name: data.name,
       description: data.description || null,
       accountId: data.accountId,
-      personaId: data.personaId || null,
       incomeCategory: data.incomeCategory,
       calculationType: data.calculationType,
       fixedAmount: data.fixedAmount ?? null,
@@ -76,7 +73,6 @@ export async function updateSalary(id: string, data: Partial<SalaryInput>) {
       name: data.name,
       description: data.description ?? null,
       accountId: data.accountId,
-      personaId: data.personaId ?? null,
       incomeCategory: data.incomeCategory,
       calculationType: data.calculationType,
       fixedAmount: data.fixedAmount ?? null,

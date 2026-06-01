@@ -26,7 +26,7 @@ export default async function TransactionsPage() {
   const startDate = new Date(now.getFullYear(), now.getMonth(), 1)
   const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
 
-  const [txResult, accounts, creditCards, categories, personas] = await Promise.all([
+  const [txResult, accounts, creditCards, categories] = await Promise.all([
     (async () => {
       const where = { userId: session.userId, date: { gte: startDate, lte: endDate } }
       const [transactions, total] = await Promise.all([
@@ -36,7 +36,6 @@ export default async function TransactionsPage() {
             account: { select: { id: true, name: true, color: true } },
             creditCard: { select: { id: true, name: true, color: true } },
             category: { select: { id: true, name: true, color: true } },
-            persona: { select: { id: true, name: true, color: true } },
           },
           orderBy: { date: "desc" },
           take: 50,
@@ -48,7 +47,6 @@ export default async function TransactionsPage() {
     prisma.account.findMany({ where: { userId: session.userId, isActive: true, archived: false }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.creditCard.findMany({ where: { userId: session.userId, isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ where: { userId: session.userId, archived: false }, select: { id: true, name: true, type: true }, orderBy: { name: "asc" } }),
-    prisma.persona.findMany({ where: { userId: session.userId, archived: false }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ])
 
   const income = txResult.transactions.filter((t) => t.type === "INCOME" && t.status === "PAID").reduce((s, t) => s + toNum(t.amount), 0)
@@ -80,7 +78,6 @@ export default async function TransactionsPage() {
           accounts={accounts}
           creditCards={creditCards}
           categories={categories}
-          personas={personas}
         />
       </div>
     </>

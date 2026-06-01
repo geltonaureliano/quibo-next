@@ -15,7 +15,6 @@ export interface TransactionInput {
   accountId?: string
   creditCardId?: string
   categoryId?: string
-  personaId?: string
   notes?: string
   isRecurring?: boolean
   recurrenceMonths?: number
@@ -60,7 +59,6 @@ export async function getTransactions(params?: {
         account: { select: { id: true, name: true, color: true } },
         creditCard: { select: { id: true, name: true, color: true } },
         category: { select: { id: true, name: true, color: true } },
-        persona: { select: { id: true, name: true, color: true } },
       },
       orderBy: { date: "desc" },
       skip,
@@ -90,7 +88,6 @@ export async function createTransaction(data: TransactionInput) {
         accountId: data.accountId || null,
         creditCardId: data.creditCardId || null,
         categoryId: data.categoryId || null,
-        personaId: data.personaId || null,
         notes: data.notes || null,
         isRecurring: true,
         recurrenceRule: "monthly",
@@ -112,7 +109,6 @@ export async function createTransaction(data: TransactionInput) {
         accountId: data.accountId || null,
         creditCardId: data.creditCardId || null,
         categoryId: data.categoryId || null,
-        personaId: data.personaId || null,
         notes: data.notes || null,
         tags: [],
         attachments: [],
@@ -142,7 +138,6 @@ export async function updateTransaction(
     accountId: data.accountId ?? null,
     creditCardId: data.creditCardId ?? null,
     categoryId: data.categoryId ?? null,
-    personaId: data.personaId ?? null,
     notes: data.notes ?? null,
     paidAt: data.status === "PAID" ? new Date() : null,
   }

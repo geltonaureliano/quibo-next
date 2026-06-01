@@ -14,7 +14,6 @@ export interface AccountInput {
   initialBalance?: number
   color?: string
   icon?: string
-  personaId?: string
 }
 
 async function requireSession() {
@@ -27,7 +26,6 @@ export async function getAccounts() {
   const session = await requireSession()
   return prisma.account.findMany({
     where: { userId: session.userId, archived: false },
-    include: { persona: { select: { id: true, name: true, color: true } } },
     orderBy: { createdAt: "desc" },
   })
 }
@@ -48,7 +46,6 @@ export async function createAccount(data: AccountInput) {
       initialBalance: balance,
       color: data.color || "#3b82f6",
       icon: data.icon || "tabler:wallet",
-      personaId: data.personaId || null,
     },
   })
   revalidatePath("/accounts")
@@ -67,7 +64,6 @@ export async function updateAccount(id: string, data: Partial<AccountInput>) {
       accountNumber: data.accountNumber ?? null,
       color: data.color,
       icon: data.icon,
-      personaId: data.personaId ?? null,
     },
   })
   revalidatePath("/accounts")

@@ -4,9 +4,13 @@ import { useState, useTransition } from "react"
 import { toast } from "sonner"
 import { createSalary, updateSalary, deleteSalary, toggleSalaryActive, type SalaryInput } from "@/actions/salaries"
 import type { SalaryCalculationType, WorkDaysType, IncomeCategoryType } from '@/lib/db-types'
+import { fmtCurrency, formatCurrencyMask, parseCurrencyToFloat } from "@/lib/currency"
+import { CurrencyInput } from "@/components/shared/currency-input"
 import {
   getMonthlyRevenueAmount,
-  isRevenueActiveInMonth,
+  getRevenueMonthStatus,
+  fmtMonthName,
+  nextMonthYear,
 } from "@/lib/revenue-calculations"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,7 +36,14 @@ import {
   PlusIcon,
   Trash2Icon,
   SearchIcon,
+  InfoIcon,
 } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 // ─── Categoria de Receita ──────────────────────────────────────────────────
 
@@ -61,76 +72,32 @@ function getCategoryInfo(value: IncomeCategoryType) {
 // ─── Tipos ────────────────────────────────────────────────────────────────
 
 type SalaryWithRels = {
-  id: string; userId: string; accountId: string; personaId: string | null; name: string; description: string | null
+  id: string; userId: string; accountId: string; name: string; description: string | null
   incomeCategory: IncomeCategoryType
   calculationType: SalaryCalculationType; fixedAmount: number; hourlyRate: number; hoursPerDay: number
   workDays: WorkDaysType | null; includeHolidays: boolean; isRecurring: boolean
   startDate: Date; endDate: Date | null; paymentDay: number | null; isActive: boolean; createdAt: Date; updatedAt: Date
   account: { id: string; name: string; color: string } | null
-  persona: { id: string; name: string; color: string } | null
 }
 
 // ─── Utilitários ──────────────────────────────────────────────────────────
-
-function toNum(v: unknown): number {
-  if (typeof v === "number") return v
-  if (v && typeof (v as { toNumber?: () => number }).toNumber === "function") return (v as { toNumber: () => number }).toNumber()
-  return 0
-}
-
-function fmtCurrency(v: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v)
-}
 
 function fmtDate(d: Date) {
   return new Date(d).toLocaleDateString("pt-BR", { month: "short", year: "numeric" })
 }
 
-// ─── Máscara de moeda BRL ─────────────────────────────────────────────────
-
-function parseCurrencyToFloat(masked: string): number {
-  const digits = masked.replace(/\D/g, "")
-  if (!digits) return 0
-  return parseInt(digits, 10) / 100
-}
-
-function formatCurrencyMask(value: string): string {
-  const digits = value.replace(/\D/g, "")
-  if (!digits) return ""
-  const num = parseInt(digits, 10) / 100
-  return new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num)
-}
-
-function CurrencyInput({
-  value,
-  onChange,
-  placeholder = "0,00",
-  id,
-}: {
-  value: string
-  onChange: (raw: string, float: number) => void
-  placeholder?: string
-  id?: string
-}) {
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const masked = formatCurrencyMask(e.target.value)
-    onChange(masked, parseCurrencyToFloat(masked))
+function getRevenueStatusLabel(
+  salary: SalaryWithRels,
+  status: ReturnType<typeof getRevenueMonthStatus>
+): string | null {
+  if (status.isHourlyCurrentWork) return null // tratado separadamente como preview
+  if (!status.inMonth) {
+    if (status.notYetStarted) return `Inicia em ${fmtDate(salary.startDate)}`
+    if (status.ended) return "Encerrada neste período"
+    return "Fora do período"
   }
-  return (
-    <div className="relative">
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium pointer-events-none">
-        R$
-      </span>
-      <Input
-        id={id}
-        value={value}
-        onChange={handleChange}
-        placeholder={placeholder}
-        inputMode="numeric"
-        className="pl-9"
-      />
-    </div>
-  )
+  if (!salary.isActive) return "Inativa"
+  return null
 }
 
 // ─── Formulário ──────────────────────────────────────────────────────────
@@ -148,7 +115,6 @@ function ReceitaForm({ salary, accounts, onSuccess, onCancel, onRequestDelete }:
   const [name, setName] = useState(salary?.name ?? "")
   const [description, setDescription] = useState(salary?.description ?? "")
   const [accountId, setAccountId] = useState(salary?.accountId ?? "")
-  const [personaId] = useState(salary?.personaId ?? "")
   const [incomeCategory, setIncomeCategory] = useState<IncomeCategoryType>(salary?.incomeCategory ?? "OTHER")
   const [calcType, setCalcType] = useState<SalaryCalculationType>(salary?.calculationType ?? "FIXED")
 
@@ -181,7 +147,6 @@ function ReceitaForm({ salary, accounts, onSuccess, onCancel, onRequestDelete }:
       name: name.trim(),
       description: description || undefined,
       accountId,
-      personaId: personaId || undefined,
       incomeCategory,
       calculationType: calcType,
       fixedAmount: calcType === "FIXED" ? fixedAmountFloat : undefined,
@@ -441,12 +406,22 @@ export function ReceitasTable({ salaries, accounts, month, year }: Props) {
   const [filter, setFilter] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<IncomeCategoryType | "ALL">("ALL")
 
-  const filtered = salaries.filter((s) => {
-    const matchName = s.name.toLowerCase().includes(filter.toLowerCase())
-    const matchCat = categoryFilter === "ALL" || s.incomeCategory === categoryFilter
-    const matchMonth = isRevenueActiveInMonth(s, year, month)
-    return matchName && matchCat && matchMonth
-  })
+  const filtered = salaries
+    .filter((s) => {
+      const matchName = s.name.toLowerCase().includes(filter.toLowerCase())
+      const matchCat = categoryFilter === "ALL" || s.incomeCategory === categoryFilter
+      return matchName && matchCat
+    })
+    .sort((a, b) => {
+      const statusA = getRevenueMonthStatus(a, year, month)
+      const statusB = getRevenueMonthStatus(b, year, month)
+      // Ordem: vigentes no mês > preview de trabalho atual > fora do período
+      const rankA = statusA.inMonth ? 0 : statusA.isHourlyCurrentWork ? 1 : 2
+      const rankB = statusB.inMonth ? 0 : statusB.isHourlyCurrentWork ? 1 : 2
+      if (rankA !== rankB) return rankA - rankB
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1
+      return a.name.localeCompare(b.name, "pt-BR")
+    })
 
   function openCreate() { setEditing(null); setDialogOpen(true) }
   function openEdit(s: SalaryWithRels) { setEditing(s); setDialogOpen(true) }
@@ -465,7 +440,10 @@ export function ReceitasTable({ salaries, accounts, month, year }: Props) {
     toast.success(!current ? "Receita ativada" : "Receita desativada")
   }
 
-  const salariesInMonth = salaries.filter((s) => isRevenueActiveInMonth(s, year, month))
+  const salariesInMonth = salaries.filter((s) => {
+    const st = getRevenueMonthStatus(s, year, month)
+    return st.inMonth || st.isHourlyCurrentWork
+  })
 
   const categoryCounts = INCOME_CATEGORIES.map((cat) => ({
     ...cat,
@@ -507,7 +485,7 @@ export function ReceitasTable({ salaries, accounts, month, year }: Props) {
               }`}
             >
               Todas
-              <span className="text-[10px] opacity-70">{salariesInMonth.length}</span>
+              <span className="text-[10px] opacity-70">{salaries.length}</span>
             </button>
             {categoryCounts.map((cat) => {
               const Icon = cat.icon
@@ -537,11 +515,11 @@ export function ReceitasTable({ salaries, accounts, month, year }: Props) {
           <div className="rounded-2xl border border-dashed border-border">
             <EmptyState
               icon={TrendingUpIcon}
-              title="Nenhuma receita neste mês"
+              title="Nenhuma receita"
               description={
                 filter || categoryFilter !== "ALL"
                   ? "Nenhum resultado para os filtros aplicados"
-                  : "Não há receitas vigentes neste período. Tente outro mês ou cadastre uma nova fonte de renda."
+                  : "Cadastre uma fonte de renda para começar"
               }
               action={
                 !filter && categoryFilter === "ALL" ? (
@@ -570,20 +548,47 @@ export function ReceitasTable({ salaries, accounts, month, year }: Props) {
                 {filtered.map((s) => {
                   const catInfo = getCategoryInfo(s.incomeCategory)
                   const Icon = catInfo.icon
+                  const monthStatus = getRevenueMonthStatus(s, year, month)
+                  const statusLabel = getRevenueStatusLabel(s, monthStatus)
+                  const appliesToMonth = monthStatus.inMonth
+                  const isPreview = monthStatus.isHourlyCurrentWork
                   const monthlyAmount = getMonthlyRevenueAmount(s, year, month)
+                  const isRowMuted = !appliesToMonth || !s.isActive
+                  const { year: nextY, month: nextM } = nextMonthYear(year, month)
                   return (
                     <tr
                       key={s.id}
                       onClick={() => openEdit(s)}
-                      className="hover:bg-muted/50 transition-colors cursor-pointer"
+                      className={`transition-colors cursor-pointer ${
+                        isRowMuted
+                          ? "opacity-50 hover:bg-muted/30"
+                          : "hover:bg-muted/50"
+                      }`}
                     >
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${catInfo.bg}`}>
                             <Icon className={`h-4 w-4 ${catInfo.color}`} />
                           </div>
-                          <div>
-                            <div className="font-medium leading-tight">{s.name}</div>
+                          <div className="min-w-0">
+                            <div className="font-medium leading-tight flex items-center gap-2 flex-wrap">
+                              {s.name}
+                              {isPreview && (
+                                <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0 bg-amber-500/10 text-amber-700">
+                                  Recebe em {fmtMonthName(nextY, nextM).split(" ")[0]}
+                                </Badge>
+                              )}
+                              {statusLabel && (
+                                <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0">
+                                  {statusLabel}
+                                </Badge>
+                              )}
+                            </div>
+                            {s.description && (
+                              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                                {s.description}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -608,13 +613,62 @@ export function ReceitasTable({ salaries, accounts, month, year }: Props) {
                         </Badge>
                       </td>
                       <td className="px-4 py-3.5 text-right tabular-nums">
-                        <div className="font-mono font-semibold text-emerald-600">
-                          {fmtCurrency(monthlyAmount)}
-                        </div>
-                        {s.calculationType === "HOURLY" && (
-                          <div className="text-[10px] text-muted-foreground mt-0.5">
-                            {fmtCurrency(s.hourlyRate)}/h
+                        {appliesToMonth ? (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <div className="flex items-center gap-1.5">
+                              {s.calculationType === "HOURLY" && (
+                                <TooltipProvider delayDuration={100}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <InfoIcon className="h-3.5 w-3.5 text-amber-500 shrink-0 cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="left" className="max-w-xs text-xs">
+                                      <p className="font-medium mb-1">Regra T+1 — Receita por hora</p>
+                                      <p>O trabalho é feito em <strong>{fmtMonthName(monthStatus.workYear, monthStatus.workMonth)}</strong> e o pagamento é recebido no mês seguinte.</p>
+                                      <p className="mt-1 text-muted-foreground">Valor = {fmtCurrency(s.hourlyRate)}/h × {s.hoursPerDay}h/dia × dias úteis de {fmtMonthName(monthStatus.workYear, monthStatus.workMonth).split(" ")[0]}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                              <span
+                                className={`font-mono font-semibold ${
+                                  s.isActive
+                                    ? "text-emerald-600"
+                                    : "text-muted-foreground line-through"
+                                }`}
+                              >
+                                {fmtCurrency(monthlyAmount)}
+                              </span>
+                            </div>
+                            {s.calculationType === "HOURLY" && (
+                              <div className="text-[10px] text-muted-foreground">
+                                ref. {fmtMonthName(monthStatus.workYear, monthStatus.workMonth).split(" ")[0]}
+                              </div>
+                            )}
                           </div>
+                        ) : isPreview ? (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <TooltipProvider delayDuration={100}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <InfoIcon className="h-3.5 w-3.5 text-amber-500 shrink-0 cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent side="left" className="max-w-xs text-xs">
+                                    <p className="font-medium mb-1">Regra T+1 — Receita por hora</p>
+                                    <p>O trabalho está sendo feito <strong>agora</strong>. O pagamento será recebido em <strong>{fmtMonthName(nextY, nextM)}</strong>.</p>
+                                    <p className="mt-1 text-muted-foreground">Este valor não entra nos totais deste mês.</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <span className="text-muted-foreground text-xs font-mono">
+                                {fmtCurrency(s.hourlyRate)}/h
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-amber-600">paga em {fmtMonthName(nextY, nextM).split(" ")[0]}</div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3.5 hidden md:table-cell text-muted-foreground text-xs">

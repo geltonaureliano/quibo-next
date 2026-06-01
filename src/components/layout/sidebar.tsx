@@ -31,7 +31,6 @@ import {
   ShieldAlertIcon,
   TagIcon,
   TrendingUpIcon,
-  UsersIcon,
   WalletIcon,
 } from "lucide-react"
 
@@ -69,7 +68,6 @@ const navGroups: NavGroup[] = [
     items: [
       { title: "Contas", url: "/accounts", icon: WalletIcon },
       { title: "Categorias", url: "/categories", icon: TagIcon },
-      { title: "Personas", url: "/personas", icon: UsersIcon },
     ],
   },
   {

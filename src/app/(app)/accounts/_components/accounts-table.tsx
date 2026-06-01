@@ -10,7 +10,7 @@ import {
   setPrimaryAccount,
   type AccountInput,
 } from "@/actions/accounts"
-import type { Account, AccountType, Persona } from '@/lib/db-types'
+import type { Account, AccountType } from '@/lib/db-types'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -51,8 +51,6 @@ import {
   WalletIcon,
 } from "lucide-react"
 
-type AccountWithPersona = Account & { persona: Pick<Persona, "id" | "name" | "color"> | null }
-
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: "CHECKING", label: "Conta Corrente" },
   { value: "SAVINGS", label: "Poupança" },
@@ -75,13 +73,12 @@ function formatCurrency(value: number | { toNumber?: () => number } | unknown) {
 }
 
 interface AccountFormProps {
-  account?: AccountWithPersona | null
-  personas: Pick<Persona, "id" | "name">[]
+  account?: Account | null
   onSuccess: () => void
   onCancel: () => void
 }
 
-function AccountForm({ account, personas, onSuccess, onCancel }: AccountFormProps) {
+function AccountForm({ account, onSuccess, onCancel }: AccountFormProps) {
   const [isPending, startTransition] = useTransition()
   const [name, setName] = useState(account?.name ?? "")
   const [type, setType] = useState<AccountType>(account?.type ?? "CHECKING")
@@ -91,7 +88,6 @@ function AccountForm({ account, personas, onSuccess, onCancel }: AccountFormProp
   const [initialBalance, setInitialBalance] = useState(
     account ? "" : "0"
   )
-  const [personaId, setPersonaId] = useState(account?.personaId ?? "")
   const [color, setColor] = useState(account?.color ?? "#3b82f6")
   const [error, setError] = useState("")
 
@@ -112,7 +108,6 @@ function AccountForm({ account, personas, onSuccess, onCancel }: AccountFormProp
       accountNumber: accountNumber || undefined,
       initialBalance: account ? undefined : parseFloat(initialBalance || "0"),
       color,
-      personaId: personaId || undefined,
     }
 
     setError("")
@@ -179,22 +174,6 @@ function AccountForm({ account, personas, onSuccess, onCancel }: AccountFormProp
             />
           </div>
         )}
-        {personas.length > 0 && (
-          <div className="col-span-2 space-y-1.5">
-            <Label>Persona</Label>
-            <Select value={personaId || "none"} onValueChange={(v) => setPersonaId(v === "none" ? "" : v)}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Nenhuma" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Nenhuma</SelectItem>
-                {personas.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
         <div className="col-span-2 space-y-1.5">
           <Label>Cor</Label>
           <div className="flex flex-wrap gap-2 mt-1">
@@ -228,13 +207,12 @@ function AccountForm({ account, personas, onSuccess, onCancel }: AccountFormProp
 }
 
 interface AccountsTableProps {
-  accounts: AccountWithPersona[]
-  personas: Pick<Persona, "id" | "name">[]
+  accounts: Account[]
 }
 
-export function AccountsTable({ accounts, personas }: AccountsTableProps) {
+export function AccountsTable({ accounts }: AccountsTableProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingAccount, setEditingAccount] = useState<AccountWithPersona | null>(null)
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [filter, setFilter] = useState("")
 
@@ -248,7 +226,7 @@ export function AccountsTable({ accounts, personas }: AccountsTableProps) {
     setDialogOpen(true)
   }
 
-  function openEdit(account: AccountWithPersona) {
+  function openEdit(account: Account) {
     setEditingAccount(account)
     setDialogOpen(true)
   }
@@ -408,7 +386,6 @@ export function AccountsTable({ accounts, personas }: AccountsTableProps) {
           </DialogHeader>
           <AccountForm
             account={editingAccount}
-            personas={personas}
             onSuccess={() => setDialogOpen(false)}
             onCancel={() => setDialogOpen(false)}
           />

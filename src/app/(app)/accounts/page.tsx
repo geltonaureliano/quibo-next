@@ -25,18 +25,10 @@ export default async function AccountsPage() {
   const session = await getSession()
   if (!session) redirect("/login")
 
-  const [accounts, personas] = await Promise.all([
-    prisma.account.findMany({
-      where: { userId: session.userId, archived: false },
-      include: { persona: { select: { id: true, name: true, color: true } } },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.persona.findMany({
-      where: { userId: session.userId, archived: false },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-  ])
+  const accounts = await prisma.account.findMany({
+    where: { userId: session.userId, archived: false },
+    orderBy: { createdAt: "desc" },
+  })
 
   const totalBalance = accounts.reduce((s, a) => s + toNumber(a.balance), 0)
   const activeCount = accounts.filter((a) => a.isActive).length
@@ -78,7 +70,7 @@ export default async function AccountsPage() {
             </>
           }
         />
-        <AccountsTable accounts={accounts} personas={personas} />
+        <AccountsTable accounts={accounts} />
       </div>
     </>
   )

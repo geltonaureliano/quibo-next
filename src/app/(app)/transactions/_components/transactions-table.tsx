@@ -20,14 +20,13 @@ import { ArrowDownIcon, ArrowUpIcon, ArrowRightLeftIcon, Edit2Icon, Loader2Icon,
 type Transaction = {
   id: string; userId: string; description: string; amount: unknown; type: TransactionType; status: TransactionStatus
   date: Date; paidAt: Date | null; accountId: string | null; creditCardId: string | null; categoryId: string | null
-  salaryId: string | null; personaId: string | null; isRecurring: boolean; recurrenceRule: string | null
+  salaryId: string | null; isRecurring: boolean; recurrenceRule: string | null
   recurrenceGroupId: string | null; recurrenceEndDate: Date | null; parentTransactionId: string | null
   isInstallment: boolean; installmentNumber: number | null; totalInstallments: number | null
   notes: string | null; tags: string[]; attachments: string[]; createdAt: Date; updatedAt: Date
   account: { id: string; name: string; color: string } | null
   creditCard: { id: string; name: string; color: string } | null
   category: { id: string; name: string; color: string } | null
-  persona: { id: string; name: string; color: string } | null
 }
 
 const TX_TYPES: { value: TransactionType; label: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
@@ -59,12 +58,11 @@ interface FormProps {
   accounts: { id: string; name: string }[]
   creditCards: { id: string; name: string }[]
   categories: { id: string; name: string; type: TransactionType }[]
-  personas: { id: string; name: string }[]
   onSuccess: () => void
   onCancel: () => void
 }
 
-function TransactionForm({ transaction, accounts, creditCards, categories, personas, onSuccess, onCancel }: FormProps) {
+function TransactionForm({ transaction, accounts, creditCards, categories, onSuccess, onCancel }: FormProps) {
   const [isPending, startTransition] = useTransition()
   const [description, setDescription] = useState(transaction?.description ?? "")
   const [amount, setAmount] = useState(transaction ? toNum(transaction.amount).toString() : "")
@@ -75,7 +73,6 @@ function TransactionForm({ transaction, accounts, creditCards, categories, perso
   const [creditCardId, setCreditCardId] = useState(transaction?.creditCardId ?? "")
   const [useCreditCard, setUseCreditCard] = useState(!!transaction?.creditCardId)
   const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? "")
-  const [personaId, setPersonaId] = useState(transaction?.personaId ?? "")
   const [notes, setNotes] = useState(transaction?.notes ?? "")
   const [isRecurring, setIsRecurring] = useState(transaction?.isRecurring ?? false)
   const [recurrenceMonths, setRecurrenceMonths] = useState("12")
@@ -93,7 +90,7 @@ function TransactionForm({ transaction, accounts, creditCards, categories, perso
       description: description.trim(), amount: parseFloat(amount), type, status, date,
       accountId: !useCreditCard && accountId ? accountId : undefined,
       creditCardId: useCreditCard && creditCardId ? creditCardId : undefined,
-      categoryId: categoryId || undefined, personaId: personaId || undefined, notes: notes || undefined,
+      categoryId: categoryId || undefined, notes: notes || undefined,
       isRecurring, recurrenceMonths: isRecurring ? parseInt(recurrenceMonths) : undefined,
     }
     setError("")
@@ -153,21 +150,12 @@ function TransactionForm({ transaction, accounts, creditCards, categories, perso
           </Select>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>Categoria</Label>
-          <Select value={categoryId || "none"} onValueChange={(v) => setCategoryId(v === "none" ? "" : v)}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
-            <SelectContent><SelectItem value="none">Nenhuma</SelectItem>{filteredCategories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Persona</Label>
-          <Select value={personaId || "none"} onValueChange={(v) => setPersonaId(v === "none" ? "" : v)}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
-            <SelectContent><SelectItem value="none">Nenhuma</SelectItem>{personas.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
+      <div className="space-y-1.5">
+        <Label>Categoria</Label>
+        <Select value={categoryId || "none"} onValueChange={(v) => setCategoryId(v === "none" ? "" : v)}>
+          <SelectTrigger className="w-full"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
+          <SelectContent><SelectItem value="none">Nenhuma</SelectItem>{filteredCategories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+        </Select>
       </div>
       <div className="space-y-1.5"><Label>Notas</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
       {!transaction && (
@@ -197,10 +185,9 @@ interface Props {
   accounts: { id: string; name: string }[]
   creditCards: { id: string; name: string }[]
   categories: { id: string; name: string; type: TransactionType }[]
-  personas: { id: string; name: string }[]
 }
 
-export function TransactionsTable({ transactions, total, page, totalPages, accounts, creditCards, categories, personas }: Props) {
+export function TransactionsTable({ transactions, total, page, totalPages, accounts, creditCards, categories }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -335,7 +322,7 @@ export function TransactionsTable({ transactions, total, page, totalPages, accou
             <DialogTitle>{editing ? "Editar transação" : "Nova transação"}</DialogTitle>
             <DialogDescription>Registre movimentações financeiras</DialogDescription>
           </DialogHeader>
-          <TransactionForm transaction={editing} accounts={accounts} creditCards={creditCards} categories={categories} personas={personas} onSuccess={() => setDialogOpen(false)} onCancel={() => setDialogOpen(false)} />
+          <TransactionForm transaction={editing} accounts={accounts} creditCards={creditCards} categories={categories} onSuccess={() => setDialogOpen(false)} onCancel={() => setDialogOpen(false)} />
         </DialogContent>
       </Dialog>
 

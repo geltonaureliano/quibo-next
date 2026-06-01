@@ -110,7 +110,6 @@ model User {
   updatedAt DateTime @updatedAt
 
   accounts              Account[]
-  personas              Persona[]
   categories            Category[]
   creditCards           CreditCard[]
   salaries              Salary[]
@@ -141,35 +140,10 @@ model Account {
   isActive       Boolean     @default(true)
   isPrimary      Boolean     @default(false)
   archived       Boolean     @default(false)
-  personaId      String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  persona      Persona?      @relation(fields: [personaId], references: [id], onDelete: SetNull)
-  transactions Transaction[]
-  salaries     Salary[]
-  livingCosts  LivingCost[]
-  debts        Debt[]
-
-  @@index([userId])
-}
-
-/// Contexto financeiro — separa finanças pessoais, profissionais, projetos etc.
-model Persona {
-  id          String  @id @default(uuid())
-  userId      String
-  name        String
-  description String?
-  color       String  @default("#3b82f6")
-  icon        String  @default("tabler:user")
-  archived    Boolean @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accounts     Account[]
-  creditCards  CreditCard[]
   transactions Transaction[]
   salaries     Salary[]
   livingCosts  LivingCost[]
@@ -210,7 +184,6 @@ model Salary {
   id              String                @id @default(uuid())
   userId          String
   accountId       String
-  personaId       String?
   name            String
   description     String?
   calculationType  SalaryCalculationType
@@ -234,7 +207,6 @@ model Salary {
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   account      Account       @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  persona      Persona?      @relation(fields: [personaId], references: [id], onDelete: SetNull)
   transactions Transaction[]
 
   @@index([userId])
@@ -259,7 +231,6 @@ model LivingCost {
   /// Obrigatório quando sourceType = CREDIT_CARD
   creditCardId String?
   categoryId   String?
-  personaId    String?
   /// Dia do mês em que a despesa vence (1–31)
   dayOfMonth   Int
   startDate    DateTime?
@@ -272,7 +243,6 @@ model LivingCost {
   account    Account?    @relation(fields: [accountId], references: [id], onDelete: Restrict)
   creditCard CreditCard? @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
   category   Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  persona    Persona?    @relation(fields: [personaId], references: [id], onDelete: SetNull)
 
   @@index([userId])
 }
@@ -294,7 +264,6 @@ model Debt {
   paidAmount            Decimal    @default(0)
   accountId             String
   categoryId            String?
-  personaId             String?
   startDate             DateTime
   /// Obrigatório para LOAN e PENDING
   dueDate               DateTime?
@@ -312,7 +281,6 @@ model Debt {
   user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   account      Account           @relation(fields: [accountId], references: [id], onDelete: Restrict)
   category     Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  persona      Persona?          @relation(fields: [personaId], references: [id], onDelete: SetNull)
   installments DebtInstallment[]
 
   @@index([userId])
@@ -354,12 +322,10 @@ model CreditCard {
   dueDay     Int
   color      String    @default("#6366f1")
   isActive   Boolean   @default(true)
-  personaId  String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  persona      Persona?      @relation(fields: [personaId], references: [id], onDelete: SetNull)
   transactions Transaction[]
   invoices     Invoice[]
   livingCosts  LivingCost[]
@@ -412,7 +378,6 @@ model Transaction {
   categoryId   String?
   /// Vincula ao Salary que originou este recebimento
   salaryId     String?
-  personaId    String?
 
   // Recorrência — instâncias vinculadas pelo mesmo recurrenceGroupId
   isRecurring         Boolean   @default(false)
@@ -437,7 +402,6 @@ model Transaction {
   creditCard CreditCard?   @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
   category   Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   salary     Salary?       @relation(fields: [salaryId], references: [id], onDelete: SetNull)
-  persona    Persona?      @relation(fields: [personaId], references: [id], onDelete: SetNull)
   parent     Transaction?  @relation("TransactionParent", fields: [parentTransactionId], references: [id], onDelete: SetNull)
   children   Transaction[] @relation("TransactionParent")
 

@@ -108,32 +108,143 @@ export type RevenueForCalculation = {
   endDate: Date | null
 }
 
+function toDateOnly(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+// ─── Helpers de mês ─────────────────────────────────────────────────────────
+
+export function prevMonthYear(year: number, month: number) {
+  return month === 0
+    ? { year: year - 1, month: 11 }
+    : { year, month: month - 1 }
+}
+
+export function nextMonthYear(year: number, month: number) {
+  return month === 11
+    ? { year: year + 1, month: 0 }
+    : { year, month: month + 1 }
+}
+
+export function fmtMonthName(year: number, month: number) {
+  return new Date(year, month, 1).toLocaleDateString("pt-BR", {
+    month: "long",
+    year: "numeric",
+  })
+}
+
+// ─── Vigência no mês ─────────────────────────────────────────────────────────
+
+/**
+ * Regra T+1 para receitas horárias:
+ * O trabalho é feito no mês M, mas o pagamento é recebido no mês M+1.
+ * Portanto, ao visualizar o mês M:
+ *   - FIXED  → verifica vigência em M, calcula com dias de M
+ *   - HOURLY → verifica vigência em M-1 (trabalho), calcula com dias de M-1
+ */
+export type RevenueMonthStatus = {
+  /** Vigente no mês de pagamento visualizado */
+  inMonth: boolean
+  /** HOURLY em andamento no mês atual (trabalho em M, pagamento em M+1) */
+  isHourlyCurrentWork: boolean
+  /** Início após o último dia do mês de referência */
+  notYetStarted: boolean
+  /** Fim antes do primeiro dia do mês de referência */
+  ended: boolean
+  /** Mês de referência para o cálculo (M para FIXED, M-1 para HOURLY) */
+  workYear: number
+  workMonth: number
+}
+
+function checkVigency(
+  revenue: RevenueForCalculation,
+  year: number,
+  month: number
+): { inPeriod: boolean; notYetStarted: boolean; ended: boolean } {
+  const periodStart = toDateOnly(new Date(year, month, 1))
+  const periodEnd = toDateOnly(new Date(year, month + 1, 0))
+  const start = toDateOnly(new Date(revenue.startDate))
+  const end = revenue.endDate ? toDateOnly(new Date(revenue.endDate)) : null
+
+  const notYetStarted = start > periodEnd
+  const ended = end !== null && end < periodStart
+
+  if (notYetStarted || ended) {
+    return { inPeriod: false, notYetStarted, ended }
+  }
+
+  if (!revenue.isRecurring) {
+    return {
+      inPeriod: start.getFullYear() === year && start.getMonth() === month,
+      notYetStarted: false,
+      ended: false,
+    }
+  }
+
+  return { inPeriod: true, notYetStarted: false, ended: false }
+}
+
+export function getRevenueMonthStatus(
+  revenue: RevenueForCalculation,
+  year: number,
+  month: number
+): RevenueMonthStatus {
+  if (revenue.calculationType === "FIXED") {
+    const { inPeriod, notYetStarted, ended } = checkVigency(revenue, year, month)
+    return {
+      inMonth: inPeriod,
+      isHourlyCurrentWork: false,
+      notYetStarted,
+      ended,
+      workYear: year,
+      workMonth: month,
+    }
+  }
+
+  // HOURLY: T+1 — o trabalho ocorre em M-1, o pagamento é recebido em M
+  const { year: workYear, month: workMonth } = prevMonthYear(year, month)
+  const { inPeriod, notYetStarted, ended } = checkVigency(revenue, workYear, workMonth)
+
+  // Verifica também se o trabalho está ocorrendo no mês ATUAL (para mostrar preview)
+  const currentWork = checkVigency(revenue, year, month)
+
+  return {
+    inMonth: inPeriod,
+    isHourlyCurrentWork: !inPeriod && currentWork.inPeriod,
+    notYetStarted: notYetStarted && !currentWork.inPeriod,
+    ended,
+    workYear,
+    workMonth,
+  }
+}
+
+/** Vigência no mês (ignora se está ativa ou inativa) */
+export function isRevenueInMonth(
+  revenue: RevenueForCalculation,
+  year: number,
+  month: number
+): boolean {
+  const status = getRevenueMonthStatus(revenue, year, month)
+  return status.inMonth || status.isHourlyCurrentWork
+}
+
+/** Vigente no mês e com switch ativo (usado nos totais dos cards) */
 export function isRevenueActiveInMonth(
   revenue: RevenueForCalculation,
   year: number,
   month: number
 ): boolean {
-  if (!revenue.isActive) return false
-
-  const monthStart = new Date(year, month, 1)
-  const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999)
-  const start = new Date(revenue.startDate)
-  const end = revenue.endDate ? new Date(revenue.endDate) : null
-
-  if (start > monthEnd) return false
-  if (end && end < monthStart) return false
-
-  if (!revenue.isRecurring) {
-    return start.getFullYear() === year && start.getMonth() === month
-  }
-
-  return true
+  return revenue.isActive && getRevenueMonthStatus(revenue, year, month).inMonth
 }
 
 export function getMonthlyFixedAmount(revenue: RevenueForCalculation): number {
   return revenue.calculationType === "FIXED" ? revenue.fixedAmount : 0
 }
 
+/**
+ * Calcula o valor horário para o mês de pagamento M usando os dias do mês de
+ * trabalho M-1 (regra T+1).
+ */
 export function getMonthlyHourlyAmount(
   revenue: RevenueForCalculation,
   year: number,
@@ -142,22 +253,32 @@ export function getMonthlyHourlyAmount(
   if (revenue.calculationType !== "HOURLY") return 0
   if (!revenue.hourlyRate || !revenue.hoursPerDay) return 0
 
+  const { year: workYear, month: workMonth } = prevMonthYear(year, month)
+
   return calculateMonthlySalaryFromHourly(
     revenue.hourlyRate,
     revenue.hoursPerDay,
-    year,
-    month,
+    workYear,
+    workMonth,
     revenue.workDays,
     revenue.includeHolidays
   )
 }
 
+/**
+ * Valor estimado no mês (para exibição na tabela).
+ * FIXED → calcula com dias de M.
+ * HOURLY → calcula com dias de M-1 (trabalho), mas só se vigente em M (pagamento).
+ * Se isHourlyCurrentWork (trabalho em M, pagamento em M+1), retorna 0 (preview).
+ */
 export function getMonthlyRevenueAmount(
   revenue: RevenueForCalculation,
   year: number,
   month: number
 ): number {
-  if (!isRevenueActiveInMonth(revenue, year, month)) return 0
+  const status = getRevenueMonthStatus(revenue, year, month)
+
+  if (!status.inMonth) return 0
 
   if (revenue.calculationType === "FIXED") {
     return getMonthlyFixedAmount(revenue)
@@ -188,5 +309,107 @@ export function sumMonthlyRevenues(
     fixedTotal,
     hourlyTotal,
     total: fixedTotal + hourlyTotal,
+  }
+}
+
+function getRevenueWorkDaysInMonth(
+  revenue: RevenueForCalculation,
+  year: number,
+  month: number
+): number {
+  if (revenue.workDays === "ALL_DAYS") {
+    return getTotalDaysInMonth(year, month)
+  }
+  return getWorkDaysInMonth(year, month, revenue.includeHolidays)
+}
+
+const DEFAULT_FIXED_HOURS_PER_DAY = 8
+
+function getRevenueHoursPerDay(revenue: RevenueForCalculation): number {
+  if (revenue.calculationType === "HOURLY") {
+    return revenue.hoursPerDay > 0 ? revenue.hoursPerDay : DEFAULT_FIXED_HOURS_PER_DAY
+  }
+  return revenue.hoursPerDay > 0 ? revenue.hoursPerDay : DEFAULT_FIXED_HOURS_PER_DAY
+}
+
+function getRevenueUsefulDaysInMonth(
+  revenue: RevenueForCalculation,
+  year: number,
+  month: number
+): number {
+  if (revenue.calculationType === "HOURLY") {
+    return getRevenueWorkDaysInMonth(revenue, year, month)
+  }
+  // Receita fixa: dias úteis do mês (padrão CLT), salvo se vier configurado como ALL_DAYS
+  if (revenue.workDays === "ALL_DAYS") {
+    return getTotalDaysInMonth(year, month)
+  }
+  return getWorkDaysInMonth(year, month, revenue.includeHolidays)
+}
+
+/**
+ * Horas úteis no mês — soma de todas as receitas vigentes (fixas e por hora),
+ * cada uma com sua carga horária × dias trabalhados no período.
+ * HOURLY usa o mês de trabalho (M-1) para calcular os dias, conforme regra T+1.
+ */
+export function sumMonthlyWorkHours(
+  revenues: RevenueForCalculation[],
+  year: number,
+  month: number
+): number {
+  let hours = 0
+
+  for (const r of revenues) {
+    if (!isRevenueActiveInMonth(r, year, month)) continue
+
+    // HOURLY: calcula dias do mês de trabalho (M-1), não do mês de pagamento (M)
+    const { year: workYear, month: workMonth } =
+      r.calculationType === "HOURLY" ? prevMonthYear(year, month) : { year, month }
+
+    const days = getRevenueUsefulDaysInMonth(r, workYear, workMonth)
+    const hoursPerDay = getRevenueHoursPerDay(r)
+    hours += hoursPerDay * days
+  }
+
+  return hours
+}
+
+/** Carga horária padrão para média por hora nos cards (dias úteis × 8h) */
+export const STANDARD_WORK_HOURS_PER_DAY = 8
+
+export type MonthlyRevenueStats = {
+  total: number
+  fixedTotal: number
+  hourlyTotal: number
+  daysInMonth: number
+  workDaysInMonth: number
+  workHoursInMonth: number
+  avgPerWeek: number
+  avgPerDay: number
+  avgPerHour: number | null
+}
+
+export function computeMonthlyRevenueStats(
+  revenues: RevenueForCalculation[],
+  year: number,
+  month: number
+): MonthlyRevenueStats {
+  // Total e médias usam fixo + por hora (receitas ativas e vigentes no mês)
+  const { fixedTotal, hourlyTotal, total } = sumMonthlyRevenues(revenues, year, month)
+  const daysInMonth = getTotalDaysInMonth(year, month)
+  const workDaysInMonth = getWorkDaysInMonth(year, month, false)
+  const workHoursInMonth = workDaysInMonth * STANDARD_WORK_HOURS_PER_DAY
+  const weeksInMonth = daysInMonth / 7
+
+  return {
+    total,
+    fixedTotal,
+    hourlyTotal,
+    daysInMonth,
+    workDaysInMonth,
+    workHoursInMonth,
+    avgPerWeek: weeksInMonth > 0 ? total / weeksInMonth : 0,
+    avgPerDay: workDaysInMonth > 0 ? total / workDaysInMonth : 0,
+    avgPerHour: workHoursInMonth > 0 ? total / workHoursInMonth : null,
   }
 }

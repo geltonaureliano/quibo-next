@@ -13,7 +13,6 @@ export interface LivingCostInput {
   accountId?: string
   creditCardId?: string
   categoryId?: string
-  personaId?: string
   dayOfMonth: number
   startDate?: string
   endDate?: string
@@ -33,7 +32,6 @@ export async function getLivingCosts() {
       account: { select: { id: true, name: true } },
       creditCard: { select: { id: true, name: true } },
       category: { select: { id: true, name: true, color: true } },
-      persona: { select: { id: true, name: true, color: true } },
     },
     orderBy: { createdAt: "desc" },
   })
@@ -51,7 +49,6 @@ export async function createLivingCost(data: LivingCostInput) {
       accountId: data.accountId || null,
       creditCardId: data.creditCardId || null,
       categoryId: data.categoryId || null,
-      personaId: data.personaId || null,
       dayOfMonth: data.dayOfMonth,
       startDate: data.startDate ? new Date(data.startDate) : null,
       endDate: data.endDate ? new Date(data.endDate) : null,
@@ -74,7 +71,6 @@ export async function updateLivingCost(id: string, data: LivingCostInput) {
       accountId: data.accountId ?? null,
       creditCardId: data.creditCardId ?? null,
       categoryId: data.categoryId ?? null,
-      personaId: data.personaId ?? null,
       dayOfMonth: data.dayOfMonth,
       startDate: data.startDate ? new Date(data.startDate) : null,
       endDate: data.endDate ? new Date(data.endDate) : null,

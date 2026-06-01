@@ -19,12 +19,11 @@ import { CheckIcon, ChevronDownIcon, Edit2Icon, Loader2Icon, MoreHorizontalIcon,
 type Installment = { id: string; debtId: string; number: number; amount: unknown; dueDate: Date; paidDate: Date | null; status: DebtInstallmentStatus; createdAt: Date; updatedAt: Date }
 type Debt = {
   id: string; userId: string; name: string; description: string | null; type: DebtType; totalAmount: unknown
-  installmentValue: unknown; paidAmount: unknown; accountId: string; categoryId: string | null; personaId: string | null
+  installmentValue: unknown; paidAmount: unknown; accountId: string; categoryId: string | null
   startDate: Date; dueDate: Date | null; totalInstallments: number | null; remainingInstallments: number | null
   installmentDay: number | null; status: DebtStatus; interestRate: unknown; createdAt: Date; updatedAt: Date
   account: { id: string; name: string } | null
   category: { id: string; name: string; color: string } | null
-  persona: { id: string; name: string; color: string } | null
   installments: Installment[]
 }
 
@@ -57,12 +56,11 @@ interface FormProps {
   debt?: Debt | null
   accounts: { id: string; name: string }[]
   categories: { id: string; name: string }[]
-  personas: { id: string; name: string }[]
   onSuccess: () => void
   onCancel: () => void
 }
 
-function DebtForm({ debt, accounts, categories, personas, onSuccess, onCancel }: FormProps) {
+function DebtForm({ debt, accounts, categories, onSuccess, onCancel }: FormProps) {
   const [isPending, startTransition] = useTransition()
   const [name, setName] = useState(debt?.name ?? "")
   const [description, setDescription] = useState(debt?.description ?? "")
@@ -71,7 +69,6 @@ function DebtForm({ debt, accounts, categories, personas, onSuccess, onCancel }:
   const [installmentValue, setInstallmentValue] = useState(debt?.installmentValue ? toNum(debt.installmentValue).toString() : "")
   const [accountId, setAccountId] = useState(debt?.accountId ?? "")
   const [categoryId, setCategoryId] = useState(debt?.categoryId ?? "")
-  const [personaId, setPersonaId] = useState(debt?.personaId ?? "")
   const [startDate, setStartDate] = useState(debt?.startDate ? new Date(debt.startDate).toISOString().slice(0, 10) : "")
   const [dueDate, setDueDate] = useState(debt?.dueDate ? new Date(debt.dueDate).toISOString().slice(0, 10) : "")
   const [totalInstallments, setTotalInstallments] = useState(debt?.totalInstallments?.toString() ?? "")
@@ -91,7 +88,7 @@ function DebtForm({ debt, accounts, categories, personas, onSuccess, onCancel }:
     const input: DebtInput = {
       name: name.trim(), description: description || undefined, type, totalAmount: parseFloat(totalAmount),
       installmentValue: installmentValue ? parseFloat(installmentValue) : undefined,
-      accountId, categoryId: categoryId || undefined, personaId: personaId || undefined,
+      accountId, categoryId: categoryId || undefined,
       startDate, dueDate: dueDate || undefined,
       totalInstallments: totalInstallments ? parseInt(totalInstallments) : undefined,
       installmentDay: installmentDay ? parseInt(installmentDay) : undefined,
@@ -207,10 +204,9 @@ interface Props {
   debts: Debt[]
   accounts: { id: string; name: string }[]
   categories: { id: string; name: string }[]
-  personas: { id: string; name: string }[]
 }
 
-export function DebtsTable({ debts, accounts, categories, personas }: Props) {
+export function DebtsTable({ debts, accounts, categories }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Debt | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -309,7 +305,7 @@ export function DebtsTable({ debts, accounts, categories, personas }: Props) {
             <DialogTitle>{editing ? "Editar dívida" : "Nova dívida"}</DialogTitle>
             <DialogDescription>Registre financiamentos e obrigações financeiras</DialogDescription>
           </DialogHeader>
-          <DebtForm debt={editing} accounts={accounts} categories={categories} personas={personas} onSuccess={() => setDialogOpen(false)} onCancel={() => setDialogOpen(false)} />
+          <DebtForm debt={editing} accounts={accounts} categories={categories} onSuccess={() => setDialogOpen(false)} onCancel={() => setDialogOpen(false)} />
         </DialogContent>
       </Dialog>
 

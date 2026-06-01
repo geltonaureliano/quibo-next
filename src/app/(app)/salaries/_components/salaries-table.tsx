@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
 import { createSalary, updateSalary, deleteSalary, toggleSalaryActive, type SalaryInput } from "@/actions/salaries"
-import type { SalaryCalculationType, WorkDaysType } from '@/lib/db-types'
+import type { SalaryCalculationType, WorkDaysType, IncomeCategoryType } from '@/lib/db-types'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,12 +18,11 @@ import { EmptyState } from "@/components/shared/empty-state"
 import { Edit2Icon, Loader2Icon, MoreHorizontalIcon, PlusIcon, TrendingUpIcon, Trash2Icon } from "lucide-react"
 
 type SalaryWithRels = {
-  id: string; userId: string; accountId: string; personaId: string | null; name: string; description: string | null
+  id: string; userId: string; accountId: string; name: string; description: string | null
   calculationType: SalaryCalculationType; fixedAmount: unknown; hourlyRate: unknown; hoursPerDay: unknown
   workDays: WorkDaysType | null; includeHolidays: boolean; isRecurring: boolean
   startDate: Date; endDate: Date | null; paymentDay: number | null; isActive: boolean; createdAt: Date; updatedAt: Date
   account: { id: string; name: string; color: string } | null
-  persona: { id: string; name: string; color: string } | null
 }
 
 function toNum(v: unknown): number {
@@ -43,17 +42,16 @@ function fmtDate(d: Date) {
 interface FormProps {
   salary?: SalaryWithRels | null
   accounts: { id: string; name: string }[]
-  personas: { id: string; name: string }[]
   onSuccess: () => void
   onCancel: () => void
 }
 
-function SalaryForm({ salary, accounts, personas, onSuccess, onCancel }: FormProps) {
+function SalaryForm({ salary, accounts, onSuccess, onCancel }: FormProps) {
   const [isPending, startTransition] = useTransition()
   const [name, setName] = useState(salary?.name ?? "")
   const [description, setDescription] = useState(salary?.description ?? "")
   const [accountId, setAccountId] = useState(salary?.accountId ?? "")
-  const [personaId, setPersonaId] = useState(salary?.personaId ?? "")
+  const [incomeCategory, setIncomeCategory] = useState<IncomeCategoryType>("OTHER")
   const [calcType, setCalcType] = useState<SalaryCalculationType>(salary?.calculationType ?? "FIXED")
   const [fixedAmount, setFixedAmount] = useState(salary?.fixedAmount ? toNum(salary.fixedAmount).toString() : "")
   const [hourlyRate, setHourlyRate] = useState(salary?.hourlyRate ? toNum(salary.hourlyRate).toString() : "")
@@ -75,7 +73,8 @@ function SalaryForm({ salary, accounts, personas, onSuccess, onCancel }: FormPro
     if (calcType === "HOURLY" && !hourlyRate) return setError("Valor por hora é obrigatório")
 
     const input: SalaryInput = {
-      name: name.trim(), description: description || undefined, accountId, personaId: personaId || undefined,
+      name: name.trim(), description: description || undefined, accountId,
+      incomeCategory,
       calculationType: calcType,
       fixedAmount: calcType === "FIXED" ? parseFloat(fixedAmount) : undefined,
       hourlyRate: calcType === "HOURLY" ? parseFloat(hourlyRate) : undefined,
@@ -100,21 +99,12 @@ function SalaryForm({ salary, accounts, personas, onSuccess, onCancel }: FormPro
       {error && <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>}
       <div className="space-y-1.5"><Label>Nome *</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Salário CLT, Freelance..." /></div>
       <div className="space-y-1.5"><Label>Descrição</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} /></div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>Conta *</Label>
-          <Select value={accountId} onValueChange={setAccountId}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
-            <SelectContent>{accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Persona</Label>
-          <Select value={personaId || "none"} onValueChange={(v) => setPersonaId(v === "none" ? "" : v)}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
-            <SelectContent><SelectItem value="none">Nenhuma</SelectItem>{personas.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
+      <div className="space-y-1.5">
+        <Label>Conta *</Label>
+        <Select value={accountId} onValueChange={setAccountId}>
+          <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
+          <SelectContent>{accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+        </Select>
       </div>
       <div className="space-y-1.5">
         <Label>Tipo de cálculo</Label>
@@ -171,10 +161,9 @@ function SalaryForm({ salary, accounts, personas, onSuccess, onCancel }: FormPro
 interface Props {
   salaries: SalaryWithRels[]
   accounts: { id: string; name: string }[]
-  personas: { id: string; name: string }[]
 }
 
-export function SalariesTable({ salaries, accounts, personas }: Props) {
+export function SalariesTable({ salaries, accounts }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<SalaryWithRels | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -227,7 +216,6 @@ export function SalariesTable({ salaries, accounts, personas }: Props) {
                   <tr key={s.id} className="hover:bg-muted/20 transition-colors group">
                     <td className="px-4 py-3">
                       <div className="font-medium">{s.name}</div>
-                      {s.persona && <div className="text-xs text-muted-foreground">{s.persona.name}</div>}
                     </td>
                     <td className="px-4 py-3 hidden sm:table-cell">
                       <Badge variant="secondary" className={s.calculationType === "FIXED" ? "bg-blue-500/10 text-blue-600" : "bg-violet-500/10 text-violet-600"}>
@@ -270,7 +258,7 @@ export function SalariesTable({ salaries, accounts, personas }: Props) {
             <DialogTitle>{editing ? "Editar receita" : "Nova receita"}</DialogTitle>
             <DialogDescription>Configure sua fonte de renda</DialogDescription>
           </DialogHeader>
-          <SalaryForm salary={editing} accounts={accounts} personas={personas} onSuccess={() => setDialogOpen(false)} onCancel={() => setDialogOpen(false)} />
+          <SalaryForm salary={editing} accounts={accounts} onSuccess={() => setDialogOpen(false)} onCancel={() => setDialogOpen(false)} />
         </DialogContent>
       </Dialog>
 

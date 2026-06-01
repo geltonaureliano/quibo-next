@@ -22,18 +22,14 @@ export default async function CreditCardsPage() {
   const session = await getSession()
   if (!session) redirect("/login")
 
-  const [creditCards, personas] = await Promise.all([
-    prisma.creditCard.findMany({
-      where: { userId: session.userId },
-      include: {
-        persona: { select: { id: true, name: true, color: true } },
-        invoices: { orderBy: [{ year: "desc" }, { month: "desc" }], take: 3 },
-        _count: { select: { transactions: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.persona.findMany({ where: { userId: session.userId, archived: false }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-  ])
+  const creditCards = await prisma.creditCard.findMany({
+    where: { userId: session.userId },
+    include: {
+      invoices: { orderBy: [{ year: "desc" }, { month: "desc" }], take: 3 },
+      _count: { select: { transactions: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  })
 
   const active = creditCards.filter((c) => c.isActive)
   const totalLimit = active.reduce((s, c) => s + toNum(c.limit), 0)
@@ -54,7 +50,7 @@ export default async function CreditCardsPage() {
             </>
           }
         />
-        <CreditCardsTable creditCards={creditCards} personas={personas} />
+        <CreditCardsTable creditCards={creditCards} />
       </div>
     </>
   )

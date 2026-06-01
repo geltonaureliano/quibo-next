@@ -22,20 +22,18 @@ export default async function DebtsPage() {
   const session = await getSession()
   if (!session) redirect("/login")
 
-  const [debts, accounts, categories, personas] = await Promise.all([
+  const [debts, accounts, categories] = await Promise.all([
     prisma.debt.findMany({
       where: { userId: session.userId },
       include: {
         account: { select: { id: true, name: true } },
         category: { select: { id: true, name: true, color: true } },
-        persona: { select: { id: true, name: true, color: true } },
         installments: { orderBy: { number: "asc" } },
       },
       orderBy: { createdAt: "desc" },
     }),
     prisma.account.findMany({ where: { userId: session.userId, isActive: true, archived: false }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ where: { userId: session.userId, type: "EXPENSE", archived: false }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.persona.findMany({ where: { userId: session.userId, archived: false }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ])
 
   const active = debts.filter((d) => d.status === "ACTIVE")
@@ -59,7 +57,7 @@ export default async function DebtsPage() {
             </>
           }
         />
-        <DebtsTable debts={debts} accounts={accounts} categories={categories} personas={personas} />
+        <DebtsTable debts={debts} accounts={accounts} categories={categories} />
       </div>
     </>
   )

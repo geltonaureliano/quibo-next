@@ -18,8 +18,7 @@ import { CheckIcon, CreditCardIcon, Edit2Icon, ListIcon, Loader2Icon, MoreHorizo
 
 type Invoice = { id: string; creditCardId: string; userId: string; month: number; year: number; totalAmount: unknown; paidAmount: unknown; status: InvoiceStatus; dueDate: Date; paidAt: Date | null; createdAt: Date; updatedAt: Date }
 type CreditCard = {
-  id: string; userId: string; name: string; brand: CardBrand; limit: unknown; closingDay: number; dueDay: number; color: string; isActive: boolean; personaId: string | null; createdAt: Date; updatedAt: Date
-  persona: { id: string; name: string; color: string } | null
+  id: string; userId: string; name: string; brand: CardBrand; limit: unknown; closingDay: number; dueDay: number; color: string; isActive: boolean; createdAt: Date; updatedAt: Date
   invoices: Invoice[]
   _count: { transactions: number }
 }
@@ -49,20 +48,20 @@ function fmtCurrency(v: unknown) {
 
 const COLORS = ["#6366f1","#3b82f6","#10b981","#8b5cf6","#f59e0b","#ef4444","#06b6d4","#ec4899","#84cc16","#f97316"]
 
-interface CardFormProps { card?: CreditCard | null; personas: { id: string; name: string }[]; onSuccess: () => void; onCancel: () => void }
-function CardForm({ card, personas, onSuccess, onCancel }: CardFormProps) {
+interface CardFormProps { card?: CreditCard | null; onSuccess: () => void; onCancel: () => void }
+function CardForm({ card, onSuccess, onCancel }: CardFormProps) {
   const [isPending, startTransition] = useTransition()
   const [name, setName] = useState(card?.name ?? ""); const [brand, setBrand] = useState<CardBrand>(card?.brand ?? "VISA")
   const [limit, setLimit] = useState(card ? toNum(card.limit).toString() : ""); const [closingDay, setClosingDay] = useState(card?.closingDay?.toString() ?? "")
   const [dueDay, setDueDay] = useState(card?.dueDay?.toString() ?? ""); const [color, setColor] = useState(card?.color ?? "#6366f1")
-  const [personaId, setPersonaId] = useState(card?.personaId ?? ""); const [error, setError] = useState("")
+  const [error, setError] = useState("")
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return setError("Nome é obrigatório")
     if (!limit || parseFloat(limit) <= 0) return setError("Limite deve ser maior que zero")
     if (!closingDay || !dueDay) return setError("Dias de fechamento e vencimento são obrigatórios")
-    const input: CreditCardInput = { name: name.trim(), brand, limit: parseFloat(limit), closingDay: parseInt(closingDay), dueDay: parseInt(dueDay), color, personaId: personaId || undefined }
+    const input: CreditCardInput = { name: name.trim(), brand, limit: parseFloat(limit), closingDay: parseInt(closingDay), dueDay: parseInt(dueDay), color }
     setError("")
     startTransition(async () => {
       try {
@@ -87,15 +86,6 @@ function CardForm({ card, personas, onSuccess, onCancel }: CardFormProps) {
         <div className="space-y-1.5"><Label>Limite (R$) *</Label><Input type="number" step="0.01" value={limit} onChange={(e) => setLimit(e.target.value)} /></div>
         <div className="space-y-1.5"><Label>Fechamento (dia) *</Label><Input type="number" min="1" max="31" value={closingDay} onChange={(e) => setClosingDay(e.target.value)} /></div>
         <div className="space-y-1.5"><Label>Vencimento (dia) *</Label><Input type="number" min="1" max="31" value={dueDay} onChange={(e) => setDueDay(e.target.value)} /></div>
-        {personas.length > 0 && (
-          <div className="col-span-2 space-y-1.5">
-            <Label>Persona</Label>
-            <Select value={personaId || "none"} onValueChange={(v) => setPersonaId(v === "none" ? "" : v)}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
-              <SelectContent><SelectItem value="none">Nenhuma</SelectItem>{personas.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-        )}
         <div className="col-span-2 space-y-2"><Label>Cor</Label>
           <div className="flex flex-wrap gap-2">
             {COLORS.map((c) => <button key={c} type="button" className="h-7 w-7 rounded-full" style={{ backgroundColor: c, outline: color === c ? `2px solid ${c}` : "none", outlineOffset: "2px" }} onClick={() => setColor(c)} />)}
@@ -188,9 +178,9 @@ function InvoicesDialog({ card, onClose }: { card: CreditCard; onClose: () => vo
   )
 }
 
-interface Props { creditCards: CreditCard[]; personas: { id: string; name: string }[] }
+interface Props { creditCards: CreditCard[] }
 
-export function CreditCardsTable({ creditCards, personas }: Props) {
+export function CreditCardsTable({ creditCards }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<CreditCard | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -271,7 +261,7 @@ export function CreditCardsTable({ creditCards, personas }: Props) {
             <DialogTitle>{editing ? "Editar cartão" : "Novo cartão"}</DialogTitle>
             <DialogDescription>Configure seu cartão de crédito</DialogDescription>
           </DialogHeader>
-          <CardForm card={editing} personas={personas} onSuccess={() => setDialogOpen(false)} onCancel={() => setDialogOpen(false)} />
+          <CardForm card={editing} onSuccess={() => setDialogOpen(false)} onCancel={() => setDialogOpen(false)} />
         </DialogContent>
       </Dialog>
 

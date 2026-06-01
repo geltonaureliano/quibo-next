@@ -13,7 +13,6 @@ export interface DebtInput {
   installmentValue?: number
   accountId: string
   categoryId?: string
-  personaId?: string
   startDate: string
   dueDate?: string
   totalInstallments?: number
@@ -34,7 +33,6 @@ export async function getDebts() {
     include: {
       account: { select: { id: true, name: true } },
       category: { select: { id: true, name: true, color: true } },
-      persona: { select: { id: true, name: true, color: true } },
       installments: { orderBy: { number: "asc" } },
     },
     orderBy: { createdAt: "desc" },
@@ -55,7 +53,6 @@ export async function createDebt(data: DebtInput) {
       paidAmount: 0,
       accountId: data.accountId,
       categoryId: data.categoryId || null,
-      personaId: data.personaId || null,
       startDate: new Date(data.startDate),
       dueDate: data.dueDate ? new Date(data.dueDate) : null,
       totalInstallments: data.totalInstallments ?? null,
@@ -97,7 +94,6 @@ export async function updateDebt(id: string, data: Partial<DebtInput>) {
       installmentValue: data.installmentValue ?? null,
       accountId: data.accountId,
       categoryId: data.categoryId ?? null,
-      personaId: data.personaId ?? null,
       startDate: data.startDate ? new Date(data.startDate) : undefined,
       dueDate: data.dueDate ? new Date(data.dueDate) : null,
       installmentDay: data.installmentDay ?? null,
