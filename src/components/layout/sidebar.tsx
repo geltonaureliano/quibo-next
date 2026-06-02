@@ -23,7 +23,6 @@ import {
   BarChart3Icon,
   ChevronRightIcon,
   CreditCardIcon,
-  LayoutDashboardIcon,
   PiggyBankIcon,
   ReceiptIcon,
   RepeatIcon,
@@ -50,7 +49,6 @@ const navGroups: NavGroup[] = [
   {
     label: "Principal",
     items: [
-      { title: "Dashboard", url: "/dashboard", icon: LayoutDashboardIcon },
       { title: "Transações", url: "/transactions", icon: RepeatIcon },
     ],
   },
@@ -93,7 +91,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <Link href="/dashboard">
+              <Link href="/transactions">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
                   <span className="font-bold text-sm">Q</span>
                 </div>
